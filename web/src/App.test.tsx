@@ -74,6 +74,17 @@ describe("路由与根门", () => {
     expect(screen.getByRole("button", { name: "注册" })).toBeInTheDocument()
   })
 
+  it("会话失效时不留在空白工作台，回到登录页", async () => {
+    vi.mocked(setupApi.state).mockResolvedValue(
+      setupState({ ownerExists: true, enabled: false })
+    )
+    renderAt(routes, "/workbench")
+
+    expect(
+      await screen.findByRole("heading", { name: "登录" })
+    ).toBeInTheDocument()
+  })
+
   it("管理员能看到「系统管理」入口，普通成员看不到", async () => {
     vi.mocked(setupApi.state).mockResolvedValue(
       setupState({ ownerExists: true, enabled: false })

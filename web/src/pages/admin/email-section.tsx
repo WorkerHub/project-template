@@ -72,8 +72,6 @@ export function EmailSection({
       from: settings.email.resend.from,
       fromName: settings.email.resend.fromName
     })
-    setSmtpPassword("")
-    setResendKey("")
   }, [settings])
 
   const save = async (event: React.FormEvent) => {
@@ -89,6 +87,9 @@ export function EmailSection({
         }
       })
       onSaved(updated)
+      // 只有保存成功才清空密钥输入：失败时保留管理员已填的内容。
+      setSmtpPassword("")
+      setResendKey("")
       toast.success(t("admin.email.saved"))
     } catch (saveError) {
       setError(describeApiError(t, saveError))

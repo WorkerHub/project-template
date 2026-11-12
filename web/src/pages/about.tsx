@@ -28,7 +28,7 @@ export function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <section className="space-y-2 rounded-xl border bg-card p-4 text-sm">
-        <h3 className="font-heading text-sm font-semibold">{info?.name}</h3>
+        <h2 className="font-heading text-base font-semibold">{info?.name}</h2>
         <p className="text-muted-foreground">{info?.tagline}</p>
         {info?.repositoryUrl ? (
           <a
@@ -44,9 +44,9 @@ export function AboutPage() {
       </section>
 
       <section className="space-y-3 rounded-xl border bg-card p-4">
-        <h3 className="font-heading text-sm font-semibold">
+        <h2 className="font-heading text-sm font-semibold">
           {t("about.stack")}
-        </h3>
+        </h2>
         <dl className="space-y-2 text-sm">
           {stack.map(([labelKey, valueKey]) => (
             <div
@@ -63,9 +63,9 @@ export function AboutPage() {
       </section>
 
       <section className="space-y-3 rounded-xl border bg-card p-4 text-sm">
-        <h3 className="font-heading text-sm font-semibold">
+        <h2 className="font-heading text-sm font-semibold">
           {t("about.buildInfo")}
-        </h3>
+        </h2>
         <dl className="grid gap-2 sm:grid-cols-[7rem_1fr] sm:gap-3">
           <dt className="text-xs font-medium text-muted-foreground">
             {t("about.version")}

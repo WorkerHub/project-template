@@ -93,6 +93,31 @@ describe("系统管理", () => {
     expect(password).toHaveAttribute("placeholder", "已设置，留空表示不修改")
   })
 
+  it("保存成功后清空已填写的密钥，失败时保留", async () => {
+    vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
+    vi.mocked(adminApi.updateSettings).mockRejectedValue(
+      new ApiError({
+        status: 502,
+        message: "smtp down",
+        code: "EMAIL_SEND_FAILED"
+      })
+    )
+
+    const user = userEvent.setup()
+    renderAdmin()
+    const password = await screen.findByLabelText("密码")
+    await user.type(password, "typed-secret")
+    await user.click(screen.getByRole("button", { name: "保存邮件配置" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("邮件发送失败")
+    expect(password).toHaveValue("typed-secret")
+
+    vi.mocked(adminApi.updateSettings).mockResolvedValue(adminSettings())
+    await user.click(screen.getByRole("button", { name: "保存邮件配置" }))
+    await waitFor(() => {
+      expect(password).toHaveValue("")
+    })
+  })
+
   it("保存时密钥留空＝不改，其它字段照常提交", async () => {
     vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
     vi.mocked(adminApi.updateSettings).mockResolvedValue(adminSettings())

@@ -53,6 +53,25 @@ export function ForgotPasswordPage() {
     }
   }
 
+  const resend = async () => {
+    setBusy(true)
+    setError("")
+    try {
+      await authApi.forgotPassword({
+        email: email.trim(),
+        language: currentLanguage()
+      })
+      setCode("")
+      cooldown.start(60)
+    } catch (sendError) {
+      setError(describeApiError(t, sendError))
+      const retry = retryAfterSeconds(sendError)
+      if (retry) cooldown.start(retry)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const submitCode = (event: React.FormEvent) => {
     event.preventDefault()
     if (!/^\d{6}$/.test(code)) {
@@ -140,8 +159,16 @@ export function ForgotPasswordPage() {
 
           {message(error)}
 
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? t("common.loading") : t("auth.forgot.sendCode")}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={busy || cooldown.running}
+          >
+            {cooldown.running
+              ? t("common.resendIn", { seconds: cooldown.seconds })
+              : busy
+                ? t("common.loading")
+                : t("auth.forgot.sendCode")}
           </Button>
         </form>
       ) : null}
@@ -176,6 +203,18 @@ export function ForgotPasswordPage() {
 
           <Button type="submit" className="w-full" disabled={busy}>
             {t("common.actions.next")}
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            disabled={busy || cooldown.running}
+            onClick={() => void resend()}
+          >
+            {cooldown.running
+              ? t("common.resendIn", { seconds: cooldown.seconds })
+              : t("common.resend")}
           </Button>
 
           <Button

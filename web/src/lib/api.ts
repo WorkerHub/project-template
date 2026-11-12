@@ -2,7 +2,8 @@
  * API 客户端：所有页面只经这里说话。
  *
  * 约定（与单 B 冻结的契约一致）：
- * - Cookie 会话（`credentials: "include"`），401 交回调用方处理，不做跳转；
+ * - Cookie 会话（`credentials: "include"`）；私有接口 401 清本地用户态（由
+ *   RequireAuth 送回登录页），公开鉴权端点的 401 只交回调用方；
  * - 非 2xx 一律抛 ApiError，保留 status / code / retryAfter / detail，
  *   页面用 api-errors.ts 按 code 翻译，不直出后端文案；
  * - 只有带 body 的请求才设 Content-Type，GET 与 204 不碰。
@@ -85,6 +86,13 @@ async function request<T>(
 
   if (!response.ok) {
     const envelope = (await response.json().catch(() => ({}))) as ErrorEnvelope
+    // 会话中途失效：清掉本地用户态，RequireAuth 会把人送回登录页。
+    // 登录/找回等公开鉴权端点的 401 是业务结果，不动全局状态。
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      void import("@/stores/auth").then(({ useAuthStore }) => {
+        useAuthStore.setState({ user: null, status: "ready" })
+      })
+    }
     throw new ApiError({
       status: response.status,
       message: envelope.error ?? response.statusText,

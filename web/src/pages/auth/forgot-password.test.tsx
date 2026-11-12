@@ -58,6 +58,46 @@ describe("找回密码", () => {
     })
   })
 
+  it("发送后进入冷却：验证码步重发与返回后的发送按钮都不可点", async () => {
+    vi.mocked(authApi.forgotPassword).mockResolvedValue({ success: true })
+
+    const user = userEvent.setup()
+    renderForgot()
+    await user.type(screen.getByLabelText("邮箱"), "owner@example.com")
+    await user.click(screen.getByRole("button", { name: "发送验证码" }))
+    await screen.findByLabelText("输入验证码")
+
+    const resend = screen.getByRole("button", { name: "60 秒后可重发" })
+    expect(resend).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: "返回" }))
+    const again = screen.getByRole("button", { name: "60 秒后可重发" })
+    expect(again).toBeDisabled()
+  })
+
+  it("429 按 retryAfter 起倒计时", async () => {
+    vi.mocked(authApi.forgotPassword).mockRejectedValue(
+      new ApiError({
+        status: 429,
+        message: "slow down",
+        code: "RATE_LIMITED",
+        retryAfter: 30
+      })
+    )
+
+    const user = userEvent.setup()
+    renderForgot()
+    await user.type(screen.getByLabelText("邮箱"), "owner@example.com")
+    await user.click(screen.getByRole("button", { name: "发送验证码" }))
+
+    expect(
+      await screen.findByRole("button", { name: "30 秒后可重发" })
+    ).toBeDisabled()
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "尝试过于频繁，请 30 秒后再试"
+    )
+  })
+
   it("验证码错误回到验证码步", async () => {
     vi.mocked(authApi.forgotPassword).mockResolvedValue({ success: true })
     vi.mocked(authApi.resetPassword).mockRejectedValue(
