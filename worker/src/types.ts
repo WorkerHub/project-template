@@ -23,7 +23,7 @@ export interface Env {
   APP_VERSION?: string
   /**
    * 表前缀三态，解析见 src/lib/table-prefix.ts 的 getTablePrefix()：
-   * 未设置 → 项目默认前缀（"template_"）；自定义值 → 补尾 "_"；"" → 无前缀。
+   * 未设置 → 项目默认前缀（见 src/config/defaults.json，补尾 "_"）；自定义值 → 补尾 "_"；"" → 无前缀。
    * 部署期由 scripts/materialize-secrets.mjs 注入，不在仓库里写死。
    */
   TABLE_PREFIX?: string

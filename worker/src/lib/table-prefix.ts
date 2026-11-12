@@ -2,18 +2,18 @@
  * 表前缀 TABLE_PREFIX 的**唯一解析点**（规格 §5.1）。
  *
  * 三态语义（GitHub Variables 无法区分"未设置"与"留空"，故 CI 侧用保留字 none）：
- * - 未设置（undefined / null）→ 项目默认前缀，规范化为 "template_"
+ * - 未设置（undefined / null）→ 项目默认前缀（见 src/config/defaults.json），补尾 "_"
  * - 非空自定义值            → 按现行规范化补尾部 "_"（已带则原样）
  * - 显式空字符串 ""         → 完全不带前缀（表名就是 users、system_settings …）
  *
  * 约束：生效前缀必须在初始化数据库之前确定，之后不可改——表名按前缀拼出，
  * 中途换前缀等于换一套空表（setup 的 409 前缀冲突守卫负责拦住这种情况）。
- * 除 src/config/project.ts 的 DEFAULT_TABLE_PREFIX 外，代码里不得写死任何部署前缀
+ * 除 src/config/defaults.json 的默认前缀外，代码里不得写死任何部署前缀
  * 或最终表名。
  *
  * CI 侧对应实现：scripts/resolve-table-prefix.mjs（只负责把 GitHub Variables
- * 翻成注入值，补尾下划线留在这里做）。两份实现的等价性由
- * worker/test/ci-table-prefix.test.ts 锁住，改一处必须同时改另一处。
+ * 翻成注入值，补尾下划线留在这里做）。默认前缀两端共读 src/config/defaults.json，
+ * 不存在第二份值；转换/校验逻辑的等价性由 worker/test/ci-table-prefix.test.ts 锁住。
  */
 import { DEFAULT_TABLE_PREFIX } from "../config/project"
 

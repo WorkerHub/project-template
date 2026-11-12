@@ -40,7 +40,7 @@ describe("前缀合法性（拼进 SQL 标识符前必须通过）", () => {
   })
 
   it("字母/下划线开头、其后字母数字下划线合法", () => {
-    expect(isValidTablePrefix("template_")).toBe(true)
+    expect(isValidTablePrefix(`${DEFAULT_TABLE_PREFIX}_`)).toBe(true)
     expect(isValidTablePrefix("_shared")).toBe(true)
     expect(isValidTablePrefix("a1_")).toBe(true)
   })

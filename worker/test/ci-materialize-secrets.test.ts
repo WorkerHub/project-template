@@ -23,6 +23,13 @@ import { describe, expect, it } from "vitest"
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url))
 const scriptName = "materialize-secrets.mjs"
 const resolverName = "resolve-table-prefix.mjs"
+const defaultsName = path.join("worker", "src", "config", "defaults.json")
+const defaultsJson = readFileSync(path.join(repoRoot, defaultsName), "utf8")
+/** 默认前缀的期望值只从共享配置派生，测试里不再写死字面量。 */
+const defaultTablePrefix = (
+  JSON.parse(defaultsJson) as { defaultTablePrefix: string }
+).defaultTablePrefix
+const injectedDefault = JSON.stringify(defaultTablePrefix)
 const wranglerToml = readFileSync(
   path.join(repoRoot, "worker", "wrangler.toml"),
   "utf8"
@@ -37,11 +44,15 @@ const VALID_ENV = {
   D1_DATABASE_NAME: "workerhub-app"
 }
 
-/** 建一个"仓库副本"：scripts/ 下两个真实脚本 + worker/wrangler.toml。 */
+/**
+ * 建一个"仓库副本"：scripts/ 下两个真实脚本 + worker/wrangler.toml +
+ * worker/src/config/defaults.json（解析脚本从共享配置读默认前缀）。
+ */
 function makeSandbox(toml = wranglerToml) {
   const dir = mkdtempSync(path.join(tmpdir(), "materialize-secrets-"))
   mkdirSync(path.join(dir, "scripts"))
-  mkdirSync(path.join(dir, "worker"))
+  mkdirSync(path.join(dir, "worker", "src", "config"), { recursive: true })
+  writeFileSync(path.join(dir, defaultsName), defaultsJson)
   copyFileSync(
     path.join(repoRoot, "scripts", resolverName),
     path.join(dir, "scripts", resolverName)
@@ -105,11 +116,11 @@ const secretKeys = (secretsPath: string): string[] =>
   Object.keys(JSON.parse(readFileSync(secretsPath, "utf8")) as object)
 
 describe("materialize-secrets：三态注入与落盘", () => {
-  it("未设置 TABLE_PREFIX → 注入 template，secrets.json 为 0600 且含两把运行时钥", () => {
+  it("未设置 TABLE_PREFIX → 注入默认前缀，secrets.json 为 0600 且含两把运行时钥", () => {
     const res = runScript(makeSandbox(), VALID_ENV)
 
     expect(res.status).toBe(0)
-    expect(varsBlock(res.toml)).toBe('"template"')
+    expect(varsBlock(res.toml)).toBe(injectedDefault)
     expect(exists(res.secretsPath)).toBe(true)
     expect(statSync(res.secretsPath).mode & 0o777).toBe(0o600)
     expect(secretKeys(res.secretsPath)).toEqual([
@@ -123,11 +134,24 @@ describe("materialize-secrets：三态注入与落盘", () => {
     expect(res.toml).toContain('database_id = "dbid-unit-test"')
   })
 
-  it("TABLE_PREFIX 为空串 → 注入 template（与未设置等价）", () => {
+  it("TABLE_PREFIX 为空串 → 注入默认前缀（与未设置等价）", () => {
     const res = runScript(makeSandbox(), { ...VALID_ENV, TABLE_PREFIX: "" })
 
     expect(res.status).toBe(0)
-    expect(varsBlock(res.toml)).toBe('"template"')
+    expect(varsBlock(res.toml)).toBe(injectedDefault)
+  })
+
+  it("默认前缀改在共享配置里 → 注入值随之改变（单点）", () => {
+    const dir = makeSandbox()
+    writeFileSync(
+      path.join(dir, defaultsName),
+      JSON.stringify({ defaultTablePrefix: "renamed" })
+    )
+
+    const res = runScript(dir, VALID_ENV)
+
+    expect(res.status).toBe(0)
+    expect(varsBlock(res.toml)).toBe('"renamed"')
   })
 
   it("TABLE_PREFIX=none → 注入空串（无前缀）", () => {

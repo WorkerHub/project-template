@@ -16,6 +16,9 @@ const CONFIG_PATH = "worker/src/config/project.ts"
 /** 身份令牌唯一允许出现的位置（规格 §4 的令牌清单）。 */
 const ALLOWED = new Set([
   CONFIG_PATH,
+  // 只放默认表前缀这类默认值，不放身份令牌；列入白名单是为了生成项目的
+  // slug 恰好与默认前缀同串时，全仓扫描不误报。
+  "worker/src/config/defaults.json",
   "package.json",
   "web/package.json",
   "worker/wrangler.toml",

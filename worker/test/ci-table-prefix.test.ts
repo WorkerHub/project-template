@@ -1,8 +1,10 @@
 /**
  * 规格 §7-1（另一半）：CI 侧三态注入与运行时解析必须同值同规则。
- * scripts/resolve-table-prefix.mjs 与 src/lib/table-prefix.ts 是两份实现，
- * 改任何一边这条测试先红。
+ *
+ * 默认前缀只有一份值（worker/src/config/defaults.json），CI 与运行时都从它派生；
+ * 转换/校验仍是两份实现，其等价性由本文件锁住：改任何一边，这里的测试先红。
  */
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import {
   DEFAULT_TABLE_PREFIX as CI_DEFAULT,
@@ -10,6 +12,7 @@ import {
   isUsablePrefix,
   resolveForCi
 } from "../../scripts/resolve-table-prefix.mjs"
+import defaults from "../src/config/defaults.json"
 import { DEFAULT_TABLE_PREFIX } from "../src/config/project"
 import { getTablePrefix, isValidTablePrefix } from "../src/lib/table-prefix"
 
@@ -18,9 +21,25 @@ function effectiveFromCi(raw: string | undefined): string {
   return getTablePrefix({ TABLE_PREFIX: resolveForCi(raw) })
 }
 
-describe("默认前缀常量两边同值", () => {
-  it("CI 与运行时的 DEFAULT_TABLE_PREFIX 一致", () => {
-    expect(CI_DEFAULT).toBe(DEFAULT_TABLE_PREFIX)
+describe("默认前缀只有一份真源：worker/src/config/defaults.json", () => {
+  it("共享配置本身是合法的非空前缀", () => {
+    expect(defaults.defaultTablePrefix).not.toBe("")
+    expect(isUsablePrefix(defaults.defaultTablePrefix)).toBe(true)
+  })
+
+  it("CI 与运行时都从共享配置派生", () => {
+    expect(CI_DEFAULT).toBe(defaults.defaultTablePrefix)
+    expect(DEFAULT_TABLE_PREFIX).toBe(defaults.defaultTablePrefix)
+  })
+
+  it("两份实现的源码里不再写死默认前缀字面量", () => {
+    for (const relative of [
+      "../../scripts/resolve-table-prefix.mjs",
+      "../src/config/project.ts"
+    ]) {
+      const source = readFileSync(new URL(relative, import.meta.url), "utf8")
+      expect(source).not.toMatch(/DEFAULT_TABLE_PREFIX\s*=\s*"/)
+    }
   })
 
   it("“无前缀”保留字是 none", () => {
@@ -54,7 +73,7 @@ describe("前缀校验两边同规则", () => {
   it("接受/拒绝同一批值", () => {
     const samples = [
       "",
-      "template_",
+      `${DEFAULT_TABLE_PREFIX}_`,
       "wiki",
       "_shared",
       "2026",

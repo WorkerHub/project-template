@@ -6,16 +6,21 @@
  * wrangler [vars] 的值"，补尾下划线留给运行时——两处各补一次只会让语义更难对。
  *
  * 三态（GitHub Variables 里"未设置"与"留空"不可区分，故用保留字 none 表达置空）：
- * - 未设置 / 空串 → 项目默认前缀 "template"（运行时规范化为 "template_"）
+ * - 未设置 / 空串 → 项目默认前缀（运行时补尾下划线）
  * - 保留字 "none"  → ""（显式无前缀）
  * - 其他值        → 原样注入
  *
- * 两份实现的等价性由 worker/test/ci-table-prefix.test.ts 锁住：改任何一边，
- * 那条测试先红。
+ * 默认前缀的**值**不写在这里：取自 ../worker/src/config/defaults.json，与运行时同一份，
+ * 生成新项目只改那一处。转换逻辑（"原始值 → 注入值"）的等价性仍由
+ * worker/test/ci-table-prefix.test.ts 锁住。
  */
+import defaults from "../worker/src/config/defaults.json" with { type: "json" }
 
-/** 项目默认前缀（不含尾部下划线，与 worker/src/config/project.ts 同值）。 */
-export const DEFAULT_TABLE_PREFIX = "template"
+/**
+ * 项目默认前缀（不含尾部下划线）。与运行时共读 worker/src/config/defaults.json，
+ * 全仓只有那一份值：改它，CI 注入与运行时回落一起变。
+ */
+export const DEFAULT_TABLE_PREFIX = defaults.defaultTablePrefix
 
 /** 表达"显式无前缀"的保留字。 */
 export const NO_PREFIX_KEYWORD = "none"
