@@ -1,0 +1,55 @@
+import { execFileSync } from "node:child_process"
+import path from "node:path"
+import { describe, expect, it } from "vitest"
+import {
+  buildInfo,
+  buildTimeZoneLabel,
+  formatBuildDate,
+  formatBuildTime
+} from "@/lib/build-info"
+
+const repoRoot = path.resolve(process.cwd(), "..")
+
+function git(args: string[]): string | null {
+  try {
+    return execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+/** 独立算一遍 git describe 的展示形态，和生成脚本比对（证明没有写死）。 */
+function expectedVersion(): string {
+  const described = git(["describe", "--tags", "--long"])
+  if (described) {
+    const matched = described.match(/^(.+)-(\d+)-g([0-9a-f]+)$/)
+    if (matched) return `${matched[1]}-${matched[2]}-${matched[3]}`
+  }
+  const hash = git(["rev-parse", "--short", "HEAD"])
+  if (!hash) return "v0.0.0-0-unknown"
+  const count = git(["rev-list", "--count", "HEAD"]) ?? "0"
+  return `v0.0.0-${count}-${hash}`
+}
+
+describe("构建信息", () => {
+  it("版本号来自 git describe（不是写死值）", () => {
+    expect(buildInfo.version).toBe(expectedVersion())
+  })
+
+  it("版本号符合 v<semver>-<提交数>-<短哈希> 格式", () => {
+    expect(buildInfo.version).toMatch(
+      /^v\d+\.\d+\.\d+-\d+-([0-9a-f]{7,}|unknown)$/
+    )
+    expect(buildInfo.commitCount).toBeGreaterThanOrEqual(0)
+  })
+
+  it("构建日期/时间固定格式，并带时区标签", () => {
+    expect(formatBuildDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(formatBuildTime()).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+    expect(buildTimeZoneLabel()).toMatch(/^.+ \(UTC[+-]\d{2}:\d{2}\)$/)
+  })
+})

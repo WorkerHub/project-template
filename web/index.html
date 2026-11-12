@@ -1,10 +1,41 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" />
     <title>Project Template</title>
+    <script>
+      // 首屏主题落定（规格 §6.2）：必须在样式表与包体之前跑完，否则暗色用户
+      // 会看到一帧白屏。键与 web/src/lib/theme.ts 的 THEME_STORAGE_KEY 一致，
+      // 取值兼容 zustand persist 的 {state:{theme}} 与裸字符串。
+      ;(() => {
+        const root = document.documentElement
+        const meta = document.querySelector('meta[name="theme-color"]')
+        let theme = "auto"
+        try {
+          const stored = localStorage.getItem("app-theme")
+          if (stored) {
+            try {
+              theme = JSON.parse(stored)?.state?.theme ?? stored
+            } catch {
+              theme = stored
+            }
+          }
+        } catch {
+          // localStorage 被禁用时按系统外观走，不阻塞渲染
+        }
+        if (theme !== "light" && theme !== "dark") theme = "auto"
+        const dark =
+          theme === "dark" ||
+          (theme === "auto" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches)
+        root.classList.toggle("dark", dark)
+        root.style.colorScheme = dark ? "dark" : "light"
+        if (meta) meta.setAttribute("content", dark ? "#0a0a0a" : "#ffffff")
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
