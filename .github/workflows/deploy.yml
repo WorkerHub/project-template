@@ -1,0 +1,79 @@
+name: Deploy
+
+# 模板仓专属例外（规格 §8）：本模板没有生产目标，deploy 只接受手动触发。
+# 从本模板生成新项目后，按 README 生成清单把触发器改成"main 上 CI 通过即自动部署"，
+# 生成的项目不得保留这一例外：
+#
+#   on:
+#     workflow_dispatch:
+#     workflow_run:
+#       workflows: ["CI"]
+#       types: [completed]
+#
+# 并给 deploy job 加 gate：
+#
+#   if: >-
+#     github.event_name == 'workflow_dispatch' ||
+#     (github.event.workflow_run.conclusion == 'success' &&
+#      github.event.workflow_run.event == 'push' &&
+#      github.event.workflow_run.head_branch == 'main')
+
+on:
+  workflow_dispatch:
+
+run-name: Manual deploy by ${{ github.actor }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      # 版本号由 web 构建脚本从 git describe 生成；浅克隆拿不到 tag，故取全历史。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 前端构建产物与 Worker 同一部署单元（wrangler.toml 的 [assets] 指向 ../web/dist）。
+      - name: Build web
+        run: pnpm build:web
+
+      # 资源 ID 只经 secrets.* 引用（GitHub 自动掩码），不另加掩码步骤；
+      # D1_DATABASE_NAME / TABLE_PREFIX 是明文 variables。
+      # 逐键非空校验在脚本里：缺任一把即退出 1，不写 secrets.json，绝不带空值或占位值上线。
+      - name: Materialize secrets + wrangler config
+        env:
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          SIGNING_SECRET: ${{ secrets.SIGNING_SECRET }}
+          WAKER_SIGNING_KEY: ${{ secrets.WAKER_SIGNING_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
+          TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
+        run: node scripts/materialize-secrets.mjs
+
+      # 迁移不在这里跑：部署完成后由 setup 页 / 管理面「检查并升级数据库」触发同一套 runner。
+      - name: Deploy Worker
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
