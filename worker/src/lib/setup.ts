@@ -9,6 +9,7 @@
  *   （只门控页面，不门控 X-Setup-Secret 接口）。
  */
 import { getTablePrefix } from "./table-prefix"
+import { isConfiguredSecret } from "../core/auth"
 import {
   migrationsTable,
   sessionsTable,
@@ -116,6 +117,23 @@ export async function getSetting(
   } catch {
     return null
   }
+}
+
+/** 写一条站点设置（UPSERT）；表不存在时抛错，由调用方决定怎么失败。 */
+export async function setSetting(
+  db: D1Database,
+  prefix: string,
+  key: string,
+  value: string
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO ${settingsTable(prefix)} (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .bind(key, value, new Date().toISOString())
+    .run()
 }
 
 /** setup 页面是否开放：只门控页面；未初始化恒开（防自锁）。 */
@@ -274,12 +292,10 @@ export async function runSetup(env: Env): Promise<SetupResult> {
 /**
  * SETUP_SECRET 是否已配置：缺失、空白、或仍是部署模板里的 `*_PLACEHOLDER` 一律算
  * 未配置。未配置时 setup 密钥接口必须 500 失败关闭（绝不把空值当密钥比较）。
+ * 判定与签名钥共用 `core/auth.ts` 的 `isConfiguredSecret`，不各写一套。
  */
 export function isSetupSecretConfigured(secret?: string | null): boolean {
-  if (typeof secret !== "string") return false
-  const trimmed = secret.trim()
-  if (!trimmed) return false
-  return !trimmed.endsWith("_PLACEHOLDER")
+  return isConfiguredSecret(secret)
 }
 
 /** 供测试断言账本确实建在当前前缀下。 */

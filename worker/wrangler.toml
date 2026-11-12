@@ -24,3 +24,10 @@ database_id = "D1_DATABASE_ID_PLACEHOLDER"
 #
 # 密钥一律走 wrangler secrets（CI: deploy --secrets-file；本地：worker/.dev.vars），
 # 见 worker/.dev.vars.example。
+
+# 定时任务桩（规格 §5.5A）：原生 Cron 只在这里定义一次。waker 接入后由
+# `WAKER_SIGNING_KEY` 的取值让路（已配置 → 跳过；`false` → 显式关闭）。
+# 关闭时只把 crons 置为空数组 `crons = []`，不要整段删除 [triggers]——Cloudflare
+# 会保留已有 cron，删掉这一段并不等于关掉触发器。
+[triggers]
+crons = ["17 3 * * *"]

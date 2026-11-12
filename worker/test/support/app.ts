@@ -13,6 +13,8 @@ import type { Env } from "../../src/types"
 import { SqliteD1 } from "./sqlite-d1"
 
 export const TEST_SETUP_SECRET = "test-setup-secret"
+export const TEST_SIGNING_SECRET = "signing-secret-for-unit-tests-only"
+export const TEST_APP_VERSION = "v0.0.0-7-abc1234"
 
 /** 静态资源替身：只要 `/` 回 HTML，其余 404（触发 SPA 回落的前半段）。 */
 function assets(): Fetcher {
@@ -42,6 +44,8 @@ export function makeContext(overrides: Partial<Env> = {}): TestContext {
     DB: db as unknown as D1Database,
     ASSETS: assets(),
     SETUP_SECRET: TEST_SETUP_SECRET,
+    SIGNING_SECRET: TEST_SIGNING_SECRET,
+    APP_VERSION: TEST_APP_VERSION,
     ...overrides
   } as Env
   return { env, db }
@@ -174,4 +178,206 @@ export function readSetting(
     .prepare(`SELECT value FROM ${settingsTable(prefix)} WHERE key = ?`)
     .get(key) as { value: string } | undefined
   return row?.value ?? null
+}
+
+// ─── B 单补充：Cookie / 设置 / 邮件 stub / 登录助手 ─────────────────────────────
+
+/** Set-Cookie 头列表（Node 22+ 支持 getSetCookie）。 */
+export function setCookies(res: Response): string[] {
+  const headers = res.headers as Headers & { getSetCookie?: () => string[] }
+  if (typeof headers.getSetCookie === "function") return headers.getSetCookie()
+  const raw = res.headers.get("set-cookie")
+  return raw ? [raw] : []
+}
+
+/** 取某个 Cookie 的 `name=value`（可直接放进 Cookie 请求头）。 */
+export function cookieFrom(res: Response, name = SESSION_COOKIE): string {
+  const prefix = `${name}=`
+  for (const cookie of setCookies(res)) {
+    const value = cookie.split(";")[0]
+    if (value.startsWith(prefix)) return value
+  }
+  throw new Error(`cookie ${name} not found in response`)
+}
+
+/** 把多条 `name=value` 拼成 Cookie 请求头。 */
+export function cookieHeader(...cookies: string[]): string {
+  return cookies.join("; ")
+}
+
+/** 直接写一条站点设置（测试用来翻开关）。 */
+export function writeSetting(
+  db: SqliteD1,
+  prefix: string,
+  key: string,
+  value: string
+): void {
+  db.db
+    .prepare(
+      `INSERT INTO ${settingsTable(prefix)} (key, value, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    )
+    .run(key, value, new Date().toISOString())
+}
+
+export function jsonInit(
+  body: unknown,
+  headers: Record<string, string> = {}
+): RequestInit {
+  return {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  }
+}
+
+export function postJson(
+  env: Env,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  return request(env, path, jsonInit(body, headers))
+}
+
+export function patchJson(
+  env: Env,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  return request(env, path, {
+    ...jsonInit(body, headers),
+    method: "PATCH"
+  })
+}
+
+export function putJson(
+  env: Env,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<Response> {
+  return request(env, path, { ...jsonInit(body, headers), method: "PUT" })
+}
+
+export const TEST_PASSWORD = "correct-horse-battery"
+
+export async function registerUser(
+  env: Env,
+  options: { email: string; password?: string; language?: string } = {
+    email: "user@example.test"
+  }
+): Promise<Response> {
+  return postJson(env, "/api/auth/register", {
+    email: options.email,
+    password: options.password ?? TEST_PASSWORD,
+    language: options.language ?? "zh"
+  })
+}
+
+export async function loginUser(
+  env: Env,
+  options: { email: string; password?: string }
+): Promise<Response> {
+  return postJson(env, "/api/auth/login", {
+    email: options.email,
+    password: options.password ?? TEST_PASSWORD
+  })
+}
+
+/** 注册 + 登录，返回会话 Cookie（用于需要已登录的用例）。 */
+export async function registerAndLogin(
+  env: Env,
+  options: { email: string; password?: string; language?: string }
+): Promise<{ cookie: string; register: Response; login: Response }> {
+  const register = await registerUser(env, options)
+  const login = await loginUser(env, options)
+  return { cookie: cookieFrom(login), register, login }
+}
+
+export interface SentEmail {
+  to: string
+  subject: string
+  html: string
+  text: string
+  from: string
+}
+
+export interface FetchStub {
+  sent: SentEmail[]
+  restore: () => void
+}
+
+/**
+ * 把 Resend 的 HTTPS 调用换成内存 stub（规格 §7-9：smtp/resend 各以 stub 跑通
+ * 发送与错误路径）。`fail` 用来验证「错误原文回显」。
+ */
+export function stubResend(
+  options: { fail?: { status: number; body: string } } = {}
+): FetchStub {
+  const sent: SentEmail[] = []
+  const original = globalThis.fetch
+  const stub = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
+    if (!url.startsWith("https://api.resend.com/emails")) {
+      return original(input as never, init)
+    }
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      to?: string[]
+      subject?: string
+      html?: string
+      text?: string
+      from?: string
+    }
+    if (options.fail) {
+      return new Response(options.fail.body, { status: options.fail.status })
+    }
+    sent.push({
+      to: body.to?.[0] ?? "",
+      subject: body.subject ?? "",
+      html: body.html ?? "",
+      text: body.text ?? "",
+      from: body.from ?? ""
+    })
+    return new Response(JSON.stringify({ id: "stub" }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  }) as typeof fetch
+  globalThis.fetch = stub
+  return {
+    sent,
+    restore: () => {
+      globalThis.fetch = original
+    }
+  }
+}
+
+/** 配好 Resend 通道（配合 stubResend 使用）。 */
+export function configureResend(db: SqliteD1, prefix: string): void {
+  writeSetting(db, prefix, "email_provider", "resend")
+  writeSetting(
+    db,
+    prefix,
+    "resend_config",
+    JSON.stringify({
+      api_key: "re_test_key",
+      from: "noreply@example.test",
+      from_name: "Template"
+    })
+  )
+}
+
+/** 从 stub 收到的邮件里取 6 位验证码。 */
+export function codeFromEmail(email: SentEmail | undefined): string {
+  const match = `${email?.text ?? ""}${email?.html ?? ""}`.match(/\d{6}/)
+  if (!match) throw new Error("no 6-digit code in email")
+  return match[0]
 }
