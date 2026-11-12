@@ -51,13 +51,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 前端构建产物与 Worker 同一部署单元（wrangler.toml 的 [assets] 指向 ../web/dist）。
-      - name: Build web
-        run: pnpm build:web
-
       # 资源 ID 只经 secrets.* 引用（GitHub 自动掩码），不另加掩码步骤；
       # D1_DATABASE_NAME / TABLE_PREFIX 是明文 variables。
       # 逐键非空校验在脚本里：缺任一把即退出 1，不写 secrets.json，绝不带空值或占位值上线。
+      # 放在构建之前：配置不全就不值得先花时间构建产物。
       - name: Materialize secrets + wrangler config
         env:
           SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
@@ -69,6 +66,10 @@ jobs:
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
         run: node scripts/materialize-secrets.mjs
+
+      # 前端构建产物与 Worker 同一部署单元（wrangler.toml 的 [assets] 指向 ../web/dist）。
+      - name: Build web
+        run: pnpm build:web
 
       # 迁移不在这里跑：部署完成后由 setup 页 / 管理面「检查并升级数据库」触发同一套 runner。
       - name: Deploy Worker

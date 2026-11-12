@@ -7,6 +7,11 @@
 # 生成：openssl rand -base64 32
 SETUP_SECRET=SETUP_SECRET_PLACEHOLDER
 #
+# SIGNING_SECRET：tempToken 与邮件验证码的签名钥（仓库级 secret）。
+# 缺失、空值或仍是 *_PLACEHOLDER 时部署失败关闭（scripts/materialize-secrets.mjs 不写 secrets.json）。
+# 生成：openssl rand -base64 32
+SIGNING_SECRET=SIGNING_SECRET_PLACEHOLDER
+#
 # TABLE_PREFIX（可选，非密钥）：不配置 → 默认 "template"（表名 template_users …）；
 # 写成空值 → 无前缀；其他值 → 原样后补尾部下划线。只允许字母、数字、下划线。
 # 注意：保留字 none 只在 CI 侧由 scripts/materialize-secrets.mjs 翻译，本地
