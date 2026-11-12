@@ -34,13 +34,13 @@ export const countersTable = (prefix: string) =>
 
 /**
  * 迁移账本（规格 §5.1）：表名带前导下划线、排在业务表之前——
- * `_template_schema_migrations`、无前缀时 `_schema_migrations`。换前缀即换一套账本。
+ * `_<前缀>schema_migrations`、无前缀时 `_schema_migrations`。换前缀即换一套账本。
  */
 export const migrationsTable = (prefix: string) =>
   `_${tableName(prefix, "schema_migrations")}`
 
 /**
- * 旧版迁移账本名（无前导下划线，如 `template_schema_migrations`）。
+ * 旧版迁移账本名（无前导下划线，形如 `<前缀>schema_migrations`）。
  * 只供 setup 的一次性改名承接使用，业务代码不得再往这张表读写信账。
  */
 export const legacyMigrationsTable = (prefix: string) =>

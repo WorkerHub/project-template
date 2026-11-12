@@ -204,7 +204,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 ## 从本模板生成新项目（生成清单）
 
-按顺序做完，第 4 步通过才算改名完成。
+按顺序做完：第 4 步的校验通过、第 8 步清掉模板专属内容，改名才算完成。
 
 1. **建仓**：在 GitHub 上「Use this template」→ Create a new repository（public）。仓库设置里的 Template repository 只属于模板仓。
 2. **改身份单点**（`worker/src/config/project.ts` + `worker/src/config/defaults.json`）：
@@ -225,13 +225,21 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
    | `web/index.html`                  | `<title><PROJECT_NAME></title>`      |
    | `README.md`                       | 标题与一句话说明（本文件最上面两段） |
 
-4. **跑身份校验**：
+4. **格式化并跑身份校验**：
 
    ```bash
+   pnpm format        # 先格式化：短文案会让原先折行的常量被要求合并成一行
    pnpm check:identity
    ```
 
-   `scripts/check-identity.mjs` 检查上面这些位置是否与身份单点一致（README 只要求出现当前项目名），并扫描全仓（已跟踪 + 未跟踪但未忽略的文件，二进制跳过）：白名单外出现旧项目名或 slug 即失败并点名行号。输出「白名单外零残留」才算改名完成。
+   `scripts/check-identity.mjs` 做两件事：① 令牌位置必须与身份单点一致——`package.json` 与 `worker/wrangler.toml` 的 name 等于当前 slug，`web/package.json` 等于 `<slug>-web`，`web/index.html` 的 `<title>` 等于当前项目名，`README.md` 里出现当前项目名或 slug；② 扫描全仓（已跟踪 + 未跟踪但未忽略的文件，二进制跳过）：**白名单之外**出现**当前**项目名或 slug 才失败，并点名 `文件:行号`。输出「白名单外零残留」才算改名完成。
+
+   它只认当前身份：旧项目名 / 旧 slug 的残留它发现不了，`README.md` 这类令牌位置本身也不会被扫到。所以自己再扫一遍旧名（把 `<旧项目名>` / `<旧 slug>` 换成上一轮那个仓的展示名与仓库名），两条都无输出才算通过：
+
+   ```bash
+   grep -rIn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=.wrangler "<旧项目名>" .
+   grep -rIn --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=.wrangler "<旧 slug>" .
+   ```
 
 5. **配凭证**：按「部署 → 凭证清单」设好 Secrets / Variables；`SETUP_SECRET` 与 `SIGNING_SECRET` 同级必填，`TABLE_PREFIX` 按项目定。
 
@@ -245,4 +253,12 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 7. **首次部署与初始化**：把项目推到 `main`，等 `Deploy` 跑完，再打开 `/setup` 用部署密钥跑迁移，然后注册首个用户（自动成为管理员并批准）。初始化完成后 setup 页会自动关闭；需要再开时由管理员在「系统管理 → 数据库维护」打开。
 
-8. **收尾**：域名在项目自己的规格里定（模板不写域名）；把 `.github/assets/imgs/` 的截图换成本项目界面（同名覆盖）并同步「界面预览」；方案版本标注随方案同步更新；CI 全绿。
+8. **收尾**：
+   - **清掉模板专属内容**（这份 README 是模板的 README，生成项目后不改就会自相矛盾）：
+     - 首段去掉「本仓是 GitHub **template repository**……」的自述，改成新项目的两句话介绍（`PROJECT_NAME` 与 `PROJECT_TAGLINE` 的展开）；
+     - 删掉「功能特性」里「**模板例外**：本仓自身没有生产目标……」这一条；
+     - 删掉「部署 → 模板仓的例外」整节，「部署流程」第 1 条改成「push main 自动部署」；
+     - 删掉整章「从本模板生成新项目（生成清单）」——它只对模板仓有意义；
+     - 再扫一遍其余「模板」措辞（本地开发的「模板不带示例业务数据」、定时任务的「模板里是每天一次」、密钥与数据的「模板不含示例业务表」），按本项目实际改写；「邮件模板」「Template repository」这类正常用法不在清理范围。
+   - 域名在项目自己的规格里定（模板不写域名）；把 `.github/assets/imgs/` 的截图换成本项目界面（同名覆盖）并同步「界面预览」；方案版本标注随方案同步更新。
+   - 改完 README 再跑一次 `pnpm format && pnpm check:identity`，最后 CI 全绿。
