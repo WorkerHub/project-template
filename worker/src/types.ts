@@ -11,6 +11,11 @@ export interface Env {
   /** setup / 数据库维护的 X-Setup-Secret 令牌（仓库级 secret）。 */
   SETUP_SECRET?: string
   /**
+   * tempToken 与邮件验证码的签名钥（仓库级 secret），由后续鉴权/邮件单消费。
+   * 缺失时部署期即失败关闭：scripts/materialize-secrets.mjs 不生成 secrets.json。
+   */
+  SIGNING_SECRET?: string
+  /**
    * 表前缀三态，解析见 src/lib/table-prefix.ts 的 getTablePrefix()：
    * 未设置 → 项目默认前缀（"template_"）；自定义值 → 补尾 "_"；"" → 无前缀。
    * 部署期由 scripts/materialize-secrets.mjs 注入，不在仓库里写死。
