@@ -11,7 +11,7 @@ name: Deploy
 on:
   workflow_dispatch:
 
-run-name: Manual deploy by ${{ github.actor }}
+run-name: Deploy ${{ github.ref_name }} by ${{ github.actor }}
 
 permissions:
   contents: read

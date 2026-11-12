@@ -100,7 +100,7 @@ wakerRoutes.post("/execute", async (c) => {
         ok: false,
         error: {
           code: "unknown_job",
-          message: `Unknown job; this template only registers "${SCHEDULED_TASK_NAME}"`
+          message: `Unknown job; the only registered job is "${SCHEDULED_TASK_NAME}"`
         }
       },
       404
