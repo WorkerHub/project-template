@@ -27,6 +27,13 @@ export const PROJECT_TAGLINE =
   "WorkerHub 薄骨架：迁移、setup 与鉴权的最小实现。"
 
 /**
+ * 源码仓库地址（「关于」页的开源地址来源）。生成新项目时与上面几个令牌一起改。
+ * 属身份单点内的常量，因此仍是唯一真源，前端不得再写一份。
+ */
+export const PROJECT_REPOSITORY_URL =
+  "https://github.com/WorkerHub/project-template"
+
+/**
  * 档位开关（规格 §6.4）：默认多用户档；置单人档只影响注册/初始化/开关展示，
  * 不长出第二套页面或第二套鉴权。本单只定义开关，行为由后续单接。
  */

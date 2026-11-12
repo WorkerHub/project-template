@@ -129,3 +129,47 @@ export async function lockCounter(
     )
     .run()
 }
+
+/**
+ * 只读当前计数（登录锁定判定用）。表还没建或没有该键 → null。
+ * 不写库：读路径（每次登录都读一次锁状态）不制造写放大。
+ */
+export async function readCounter(
+  db: D1Database,
+  prefix: string,
+  key: CounterKey
+): Promise<CounterState | null> {
+  try {
+    const row = await db
+      .prepare(
+        `SELECT count, window_start, locked_until FROM ${countersTable(prefix)} WHERE key = ?`
+      )
+      .bind(keyOf(key))
+      .first<{
+        count: number
+        window_start: number
+        locked_until: number | null
+      }>()
+    if (!row) return null
+    return {
+      count: row.count,
+      windowStart: row.window_start,
+      lockedUntil: row.locked_until
+    }
+  } catch {
+    // 表不存在（未初始化）：视为没有计数。
+    return null
+  }
+}
+
+/** 清零一个计数键（登录成功后解除失败计数与锁定）。 */
+export async function clearCounter(
+  db: D1Database,
+  prefix: string,
+  key: CounterKey
+): Promise<void> {
+  await db
+    .prepare(`DELETE FROM ${countersTable(prefix)} WHERE key = ?`)
+    .bind(keyOf(key))
+    .run()
+}

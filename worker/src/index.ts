@@ -1,15 +1,22 @@
 /**
- * Worker 入口：路由挂载 + 全局守卫 + SPA 回落。
+ * Worker 入口：路由挂载 + 全局守卫 + 定时任务入口 + SPA 回落。
  *
- * 本单只挂 setup 与系统管理的数据库维护入口；鉴权、公开数据、邮件等路由由
- * 后续单按同一套中间件补齐——它们直接复用这里的会话中间件、no-store 与
- * 公开白名单机制，不需要另起一套。
+ * 公开表按「方法 + 路径」精确登记（setup 整段公开：state 是公开状态端点，POST 只认
+ * 请求头密钥，其余方法由 setup 路由自己回 405 JSON）。表外的 `/api/*` 一律要会话，
+ * 未登录 401 JSON + no-store；`/_waker` 不在 `/api` 下，靠签名头自家验签。
  */
 import { Hono } from "hono"
+import { wakerGateState } from "./core/waker-gate"
 import { getTablePrefix, isValidTablePrefix } from "./lib/table-prefix"
 import { authMiddleware } from "./middleware/auth"
 import { adminRoutes } from "./routes/admin"
+import { authRoutes } from "./routes/auth"
+import { meRoutes } from "./routes/me"
+import { twoFactorManageRoutes } from "./routes/twofa-manage"
+import { publicRoutes } from "./routes/public"
 import { setupRoutes } from "./routes/setup"
+import { wakerRoutes } from "./routes/waker"
+import { runScheduledTask } from "./services/scheduled-task"
 import type { Env, HonoEnv } from "./types"
 
 export const app = new Hono<HonoEnv>()
@@ -27,7 +34,7 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// 未登录/敏感响应一律 no-store；路由自己设了缓存头的保留它自己的。
+// 未登录/敏感响应一律 no-store；路由自己设了缓存头的保留它自己的（/api/public）。
 app.use("/api/*", async (c, next) => {
   await next()
   if (!c.res.headers.has("cache-control")) {
@@ -36,10 +43,23 @@ app.use("/api/*", async (c, next) => {
 })
 
 /**
- * 公开路径（方法 + 路径精确匹配）。setup 整段公开：state 是公开状态端点，
- * POST 只认请求头密钥，其余方法由 setup 路由自己回 405 JSON。
+ * 公开路径（方法 + 路径精确匹配）：登录页/注册页/找回密码与引导数据在未登录时
+ * 必须可达；setup 整段公开。除此之外全部要会话。
  */
-const PUBLIC_ROUTES = new Set(["GET /api/health"])
+const PUBLIC_ROUTES = new Set([
+  "GET /api/health",
+  "GET /api/public",
+  "POST /api/auth/register",
+  "POST /api/auth/login",
+  "POST /api/auth/2fa/verify",
+  "POST /api/auth/2fa/passkey/options",
+  "POST /api/auth/2fa/passkey/verify",
+  "POST /api/auth/logout",
+  "POST /api/auth/email/verify",
+  "POST /api/auth/email/resend",
+  "POST /api/auth/password/forgot",
+  "POST /api/auth/password/reset"
+])
 
 function isPublicRoute(method: string, path: string): boolean {
   if (path === "/api/setup" || path.startsWith("/api/setup/")) return true
@@ -56,8 +76,13 @@ app.use("/api/*", async (c, next) => {
   return authMiddleware(c, next)
 })
 
-app.route("/api/setup", setupRoutes)
+app.route("/api/public", publicRoutes)
+app.route("/api/auth", authRoutes)
+app.route("/api/auth/2fa", twoFactorManageRoutes)
+app.route("/api/me", meRoutes)
 app.route("/api/admin", adminRoutes)
+app.route("/api/setup", setupRoutes)
+app.route("/_waker", wakerRoutes)
 
 // 存活探针。生效前缀不在这里暴露——它只经 setup / 管理面的接口回显。
 app.get("/api/health", (c) => c.json({ status: "ok" }))
@@ -85,5 +110,37 @@ app.onError((err, c) => {
 })
 
 export default {
-  fetch: app.fetch
+  fetch: app.fetch,
+  /**
+   * 原生 Cron 入口。判定只有一个来源 `wakerGateState()`：已配置 → waker 接管；
+   * 显式关闭（`false`）→ 整体停掉、**不**回落 Cron；未配置 → 自己跑。
+   * `wrangler.toml` 的 `[triggers] crons` 保留，靠取值让路（置空只写 `crons = []`）。
+   */
+  async scheduled(
+    _event: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    const state = wakerGateState(env)
+    if (state === "configured") {
+      console.info(
+        "scheduled: WAKER_SIGNING_KEY 已配置，waker 接管，Cron 入口跳过"
+      )
+      return
+    }
+    if (state === "disabled") {
+      console.info(
+        "scheduled: WAKER_SIGNING_KEY=false 显式关闭自动任务，Cron 入口跳过"
+      )
+      return
+    }
+    try {
+      await runScheduledTask(env, { trigger: "cron" })
+    } catch (err) {
+      console.error(
+        "scheduled task failed:",
+        err instanceof Error ? err.message : String(err)
+      )
+    }
+  }
 } satisfies ExportedHandler<Env>

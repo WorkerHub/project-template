@@ -7,8 +7,10 @@
 # 生成：openssl rand -base64 32
 SETUP_SECRET=SETUP_SECRET_PLACEHOLDER
 #
-# SIGNING_SECRET：tempToken 与邮件验证码的签名钥（仓库级 secret）。
-# 缺失、空值或仍是 *_PLACEHOLDER 时部署失败关闭（scripts/materialize-secrets.mjs 不写 secrets.json）。
+# SIGNING_SECRET（必需，密钥）：服务端签名钥——两步登录的 tempToken、通行密钥挑战
+# Cookie、邮件验证码哈希都从这里取。与 SETUP_SECRET 分开，绝不复用同一个值。
+# 未配置时需签名的端点（2FA/通行密钥/验证码）一律 500 失败关闭，其余功能不受影响；
+# 部署期 scripts/materialize-secrets.mjs 同样校验，缺失则不生成 secrets.json。
 # 生成：openssl rand -base64 32
 SIGNING_SECRET=SIGNING_SECRET_PLACEHOLDER
 #
@@ -17,3 +19,8 @@ SIGNING_SECRET=SIGNING_SECRET_PLACEHOLDER
 # 注意：保留字 none 只在 CI 侧由 scripts/materialize-secrets.mjs 翻译，本地
 # .dev.vars 不经过它——本地要无前缀就写空值（TABLE_PREFIX=）。
 # TABLE_PREFIX=template
+#
+# WAKER_SIGNING_KEY（可选，密钥）：定时任务触发方式的唯一开关（三态）。
+# 不配 → Worker 自带 Cron 跑定时任务；配 waker 给的 key → 改由 waker 回调触发；
+# 配保留值 false → 显式关闭自动触发。只写进 GitHub Secrets、不要进仓库。
+# WAKER_SIGNING_KEY=

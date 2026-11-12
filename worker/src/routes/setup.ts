@@ -10,6 +10,10 @@
  * - 前缀冲突先做只读探测：冲突时一个表都不写，细节同样只在密钥正确时回。
  */
 import { Hono } from "hono"
+import { APP_MODE } from "../config/project"
+import { hashPassword } from "../core/auth"
+import { activeAdminExists, insertOwner } from "../db/queries/users"
+import { isValidEmail } from "../services/email"
 import { getTablePrefix } from "../lib/table-prefix"
 import {
   findForeignPrefixConflict,
@@ -137,6 +141,111 @@ setupRoutes.post("/", async (c) => {
     console.error("Setup failed:", err instanceof Error ? err.message : err)
     return c.json({ error: "Setup failed" }, 500)
   }
+})
+
+/**
+ * 单人档建唯一所有者（规格 §6.4「setup 初始化同页建唯一所有者」）。
+ *
+ * 刻意独立于 `POST /api/setup`：那条是纯升级端点（只跑迁移、不建用户），A 单已冻结
+ * 并有测试锁住；建所有者另开一个端点，两者都只认同一个 `X-Setup-Secret`。
+ * 多用户档不提供此端点（404），行为不变。
+ */
+setupRoutes.post("/owner", async (c) => {
+  if (APP_MODE !== "single") {
+    return c.json(
+      {
+        error: "Owner bootstrap is only available in single-user mode",
+        code: "MODE_UNSUPPORTED"
+      },
+      404
+    )
+  }
+  const prefix = getTablePrefix(c.env)
+  if (!isSetupSecretConfigured(c.env.SETUP_SECRET)) {
+    console.error("SETUP_SECRET 缺失、为空或仍是占位值，setup/owner 接口关闭")
+    return c.json(
+      { error: "Setup unavailable", code: "SETUP_UNAVAILABLE" },
+      500
+    )
+  }
+  if (!(await isInitialized(c.env.DB, prefix))) {
+    return c.json(
+      { error: "Run setup before creating the owner", code: "SETUP_REQUIRED" },
+      409
+    )
+  }
+
+  try {
+    await ensureCountersTable(c.env.DB, prefix)
+    const state = await consumeCounter(c.env.DB, prefix, {
+      action: "setup_owner",
+      ip: clientIp(c),
+      windowSeconds: SETUP_RATE_LIMIT.windowSeconds
+    })
+    if (state.count > SETUP_RATE_LIMIT.max) {
+      return c.json(
+        {
+          error: "Too many requests",
+          code: "RATE_LIMITED",
+          retryAfter: Math.max(
+            1,
+            state.windowStart + SETUP_RATE_LIMIT.windowSeconds - nowSeconds()
+          )
+        },
+        429
+      )
+    }
+  } catch (err) {
+    console.error(
+      "Setup owner rate limit unavailable:",
+      err instanceof Error ? err.message : err
+    )
+    return c.json({ error: "Setup unavailable" }, 500)
+  }
+
+  const secretMatches = await safeEqual(
+    c.req.header("X-Setup-Secret") ?? "",
+    c.env.SETUP_SECRET as string
+  )
+  if (!secretMatches) {
+    return c.json({ error: "Invalid setup secret" }, 403)
+  }
+
+  const body = await c.req
+    .json<{ email?: string; password?: string }>()
+    .catch(() => null)
+  const email =
+    typeof body?.email === "string" ? body.email.trim().toLowerCase() : ""
+  const password = typeof body?.password === "string" ? body.password : ""
+  if (!isValidEmail(email)) {
+    return c.json(
+      { error: "Invalid email address", code: "INVALID_EMAIL" },
+      400
+    )
+  }
+  if (password.length < 8) {
+    return c.json(
+      {
+        error: "Password must be at least 8 characters",
+        code: "WEAK_PASSWORD"
+      },
+      400
+    )
+  }
+
+  if (await activeAdminExists(c.env.DB, prefix)) {
+    return c.json(
+      { error: "An active administrator already exists", code: "OWNER_EXISTS" },
+      409
+    )
+  }
+
+  await insertOwner(c.env.DB, prefix, {
+    email,
+    passwordHash: await hashPassword(password),
+    language: "zh"
+  })
+  return c.json({ success: true }, 201)
 })
 
 // GET /api/setup 及未知子路径：明确拒绝，密钥永不进 URL。

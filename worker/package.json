@@ -11,7 +11,9 @@
     "schema:sql": "SCHEMA_SQL_UPDATE=1 vitest run test/schema-sql.test.ts"
   },
   "dependencies": {
-    "hono": "^4.13.18"
+    "@simplewebauthn/server": "^14.1.0",
+    "hono": "^4.13.18",
+    "otpauth": "^9.6.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261112.1",
