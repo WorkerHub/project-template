@@ -67,7 +67,7 @@ export function detectTablePrefixes(tableNames: string[]): Set<string> {
   for (const name of present) {
     if (name === "users") candidates.add("")
     else if (name.endsWith("_users")) {
-      // 保留前缀里的尾部下划线，例如 "template_users" → "template_"
+      // 保留前缀里的尾部下划线，例如 "<前缀>users" → "<前缀>_"
       candidates.add(name.slice(0, -"users".length))
     }
   }
