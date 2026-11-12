@@ -173,7 +173,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 ### 模板仓的例外
 
-本仓没有生产目标：`deploy.yml` 只接受手动触发（`workflow_dispatch`），团队不会运行它。生成新项目后必须按「生成清单」第 6 步改回「CI 通过即自动部署」，**不要保留模板的这一例外**。
+本仓没有生产目标：`deploy.yml` 只接受手动触发（`workflow_dispatch`），团队不会运行它。生成新项目后必须按「生成清单」第 6 步改回「push main 触发自动部署」，**不要保留模板的这一例外**。
 
 ### 凭证清单
 
@@ -197,7 +197,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 ### 部署流程
 
-1. 在 GitHub 上手动运行 `Deploy`（或 `gh workflow run deploy.yml`）；模板仓本身不运行，这里的步骤属于生成的项目。
+1. 触发器：模板仓只有手动 `workflow_dispatch`（团队不运行），生成的项目按「生成清单」第 6 步改为 push main 触发自动部署。
 2. `deploy.yml` 依次：安装依赖 → `materialize-secrets`（校验、写 secrets.json、解析 wrangler.toml）→ 构建前端 → `wrangler deploy --secrets-file`。
 3. 部署本身不跑迁移。部署完成后打开 `/setup` 用部署密钥跑一次迁移（或由管理员在「系统管理 → 数据库维护」点「检查并升级数据库」）。
 
@@ -233,28 +233,14 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 5. **配凭证**：按「部署 → 凭证清单」设好 Secrets / Variables；`SETUP_SECRET` 与 `SIGNING_SECRET` 同级必填，`TABLE_PREFIX` 按项目定。
 
-6. **改回自动部署**：把 `.github/workflows/deploy.yml` 的 `on:` 从「仅手动」改成手动 + CI 成功触发，并给 deploy job 加 gate（模板文件开头的注释里有现成片段，照抄）：
+6. **改回自动部署**：把 `.github/workflows/deploy.yml` 的 `on:` 从模板仓的「仅手动」改为 push main 触发自动部署，并删除模板仓专属的手动触发例外（规格 §8）。生成的项目不得保留这一例外：
 
    ```yaml
    on:
-     workflow_dispatch:
-     workflow_run:
-       workflows: ["CI"]
-       types: [completed]
+     push:
+       branches: [main]
    ```
 
-   ```yaml
-   jobs:
-     deploy:
-       if: >-
-         github.event_name == 'workflow_dispatch' ||
-         (github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_branch == 'main')
-   ```
-
-   生成的项目不得保留模板的手动触发例外。
-
-7. **首次部署与初始化**：先手动跑一次 Deploy，再打开 `/setup` 用部署密钥跑迁移，然后注册首个用户（自动成为管理员并批准）。初始化完成后 setup 页会自动关闭；需要再开时由管理员在「系统管理 → 数据库维护」打开。
+7. **首次部署与初始化**：把项目推到 `main`，等 `Deploy` 跑完，再打开 `/setup` 用部署密钥跑迁移，然后注册首个用户（自动成为管理员并批准）。初始化完成后 setup 页会自动关闭；需要再开时由管理员在「系统管理 → 数据库维护」打开。
 
 8. **收尾**：域名在项目自己的规格里定（模板不写域名）；把 `.github/assets/imgs/` 的截图换成本项目界面（同名覆盖）并同步「界面预览」；方案版本标注随方案同步更新；CI 全绿。
