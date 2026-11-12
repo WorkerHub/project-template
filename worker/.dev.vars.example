@@ -1,6 +1,6 @@
 # 本地 `wrangler dev` 的最小 .dev.vars 模板。
 # 复制成 worker/.dev.vars（已 gitignore）后填入真实值——真实密钥绝不进仓库。
-# 线上同名项由 CI 经 `wrangler deploy --secrets-file` 上传（workflows 与生成清单见 README）。
+# 线上同名项由 CI 经 `wrangler deploy --secrets-file` 上传（workflow 见 .github/workflows/deploy.yml，凭证清单见 README「部署 → 凭证清单」）。
 #
 # SETUP_SECRET：setup 页与 POST /api/setup 的 X-Setup-Secret 令牌。
 # 缺失、空值或仍是 *_PLACEHOLDER 时，setup 接口一律 500 失败关闭（页面不显示密钥框）。

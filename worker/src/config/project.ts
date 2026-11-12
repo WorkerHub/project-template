@@ -1,7 +1,7 @@
 /**
  * 项目身份单点（规格 §4）：从模板生成新项目时，改名成本收敛到这里 + 一份令牌清单。
  *
- * 令牌允许出现的位置（生成清单，全部用 `pnpm check:identity` 校验）：
+ * 令牌允许出现的位置（下表即权威清单，全部用 `pnpm check:identity` 校验）：
  * - 本文件（PROJECT_NAME / PROJECT_SLUG）
  * - 根 package.json 的 name
  * - web/package.json 的 name
