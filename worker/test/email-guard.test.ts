@@ -170,6 +170,70 @@ describe("邮件未配置守卫", () => {
     expect(healed.email_verified).toBe(1)
   })
 
+  it("重发冷却 60 秒：同一邮箱第二次立刻重发回 429 CODE_COOLDOWN", async () => {
+    const { env, db } = await initializedContext()
+    const prefix = activePrefix(env)
+    configureResend(db, prefix)
+    stub = stubResend()
+    await registerUser(env, { email: "owner@example.test" })
+    const admin = await adminCookie(env)
+    await putJson(
+      env,
+      "/api/admin/settings",
+      {
+        registration: {
+          emailVerificationRequired: true,
+          approvalRequired: false
+        }
+      },
+      { cookie: admin }
+    )
+    await registerUser(env, { email: "second@example.test" })
+    const sentAfterRegistration = stub.sent.length
+
+    // 每次换一个出口 IP，避免 3 次/300s 的 IP 桶先耗尽、把冷却断言盖掉。
+    const first = await postJson(
+      env,
+      "/api/auth/email/resend",
+      { email: "second@example.test" },
+      { "cf-connecting-ip": "203.0.113.1" }
+    )
+    expect(first.status).toBe(200)
+    expect(stub.sent.length).toBe(sentAfterRegistration + 1)
+
+    const second = await postJson(
+      env,
+      "/api/auth/email/resend",
+      { email: "second@example.test" },
+      { "cf-connecting-ip": "203.0.113.2" }
+    )
+    expect(second.status).toBe(429)
+    const body = (await second.json()) as { code: string; retryAfter: number }
+    expect(body.code).toBe("CODE_COOLDOWN")
+    expect(body.retryAfter).toBeGreaterThan(0)
+    // 冷却期内不再发信
+    expect(stub.sent.length).toBe(sentAfterRegistration + 1)
+
+    // 不存在的邮箱走同一冷却：两次探测形状一致，不构成枚举信号
+    const ghostFirst = await postJson(
+      env,
+      "/api/auth/email/resend",
+      { email: "ghost@example.test" },
+      { "cf-connecting-ip": "203.0.113.3" }
+    )
+    expect(ghostFirst.status).toBe(200)
+    const ghostSecond = await postJson(
+      env,
+      "/api/auth/email/resend",
+      { email: "ghost@example.test" },
+      { "cf-connecting-ip": "203.0.113.4" }
+    )
+    expect(ghostSecond.status).toBe(429)
+    expect(((await ghostSecond.json()) as { code: string }).code).toBe(
+      "CODE_COOLDOWN"
+    )
+  })
+
   it("注册邮箱验证码重发：未配置时 503，且不泄露账号是否存在", async () => {
     const { env } = await initializedContext()
     const res = await postJson(env, "/api/auth/email/resend", {
