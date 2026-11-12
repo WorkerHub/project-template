@@ -1,0 +1,26 @@
+name = "project-template"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 部署期由部署脚本注入（组织级 secret，只引用不新建；见 README 与 .github/workflows）。
+# 真实值绝不进仓库：本文件提交的只有占位符。
+account_id = "CLOUDFLARE_ACCOUNT_ID_PLACEHOLDER"
+
+# 前端构建产物与 Worker 同一部署单元，绑定名固定 ASSETS。
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+
+# 运行库（D1）。名称来自组织级 Variable，ID 来自组织级 Secret，均由部署脚本替换。
+[[d1_databases]]
+binding = "DB"
+database_name = "D1_DATABASE_NAME_PLACEHOLDER"
+database_id = "D1_DATABASE_ID_PLACEHOLDER"
+
+# 刻意不提交 [vars]：TABLE_PREFIX 只在部署期由部署脚本（scripts/materialize-secrets.mjs）
+# 按三态注入（未设置/空 → "template"，保留字 none → ""，其他值原样）；不带该变量时
+# 运行时回落到 worker/src/config/project.ts 的默认前缀 "template_"，共享库上零配置也不会串表。
+#
+# 密钥一律走 wrangler secrets（CI: deploy --secrets-file；本地：worker/.dev.vars），
+# 见 worker/.dev.vars.example。
