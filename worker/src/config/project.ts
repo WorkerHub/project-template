@@ -2,7 +2,7 @@
  * 项目身份单点（规格 §4）：从模板生成新项目时，改名成本收敛到这里 + 一份令牌清单。
  *
  * 令牌允许出现的位置（生成清单，全部用 `pnpm check:identity` 校验）：
- * - 本文件（PROJECT_NAME / PROJECT_SLUG / DEFAULT_TABLE_PREFIX）
+ * - 本文件（PROJECT_NAME / PROJECT_SLUG）
  * - 根 package.json 的 name
  * - web/package.json 的 name
  * - worker/wrangler.toml 的 name
@@ -11,7 +11,11 @@
  *
  * 除此之外全仓不得再出现项目名/slug 字面量：界面展示名一律经 /api/public 取，
  * 前端不放第二份常量。
+ *
+ * 默认表前缀的**值**不写在这里：取自 ./defaults.json，部署脚本
+ * scripts/resolve-table-prefix.mjs 读的是同一份，CI 与运行时不会再各写一份。
  */
+import defaults from "./defaults.json"
 
 /** 展示名（首页、关于页、页面标题）。 */
 export const PROJECT_NAME = "Project Template"
@@ -19,8 +23,11 @@ export const PROJECT_NAME = "Project Template"
 /** 仓库名 / Worker 名（wrangler.toml 与 package.json 的 name）。 */
 export const PROJECT_SLUG = "project-template"
 
-/** 未配置 TABLE_PREFIX 时使用的默认前缀（不含尾部下划线，见 table-prefix.ts）。 */
-export const DEFAULT_TABLE_PREFIX = "template"
+/**
+ * 未配置 TABLE_PREFIX 时使用的默认前缀（不含尾部下划线，见 table-prefix.ts）。
+ * 值来自 ./defaults.json：生成新项目只改那一处，CI 注入与运行时回落一起变。
+ */
+export const DEFAULT_TABLE_PREFIX: string = defaults.defaultTablePrefix
 
 /** 一句话说明（首页与「关于」页）。 */
 export const PROJECT_TAGLINE =
