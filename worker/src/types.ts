@@ -13,7 +13,8 @@ export interface Env {
   /**
    * 服务端签名钥：两步登录 tempToken、通行密钥挑战 Cookie、验证码哈希共用。
    * 与 SETUP_SECRET 分开、绝不复用；缺失时需签名的端点失败关闭
-   * （见 core/auth.ts 的 isSigningSecretConfigured）。
+   * （见 core/auth.ts 的 isSigningSecretConfigured），部署期由
+   * scripts/materialize-secrets.mjs 校验，缺失则不生成 secrets.json。
    */
   SIGNING_SECRET?: string
   /** waker 接入的唯一开关（三态，见 core/waker-gate.ts）：不配 → 原生 Cron。 */
