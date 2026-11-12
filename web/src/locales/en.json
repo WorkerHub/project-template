@@ -1,0 +1,291 @@
+{
+  "common": {
+    "actions": {
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "close": "Close",
+      "retry": "Retry",
+      "back": "Back",
+      "next": "Next",
+      "submit": "Submit"
+    },
+    "loading": "Loading…",
+    "email": "Email",
+    "password": "Password",
+    "newPassword": "New password",
+    "currentPassword": "Current password",
+    "code": "Verification code",
+    "codeSent": "Verification code sent",
+    "codeExpires": "The code is valid for {{minutes}} minutes",
+    "language": "Language",
+    "languages": {
+      "zh": "中文",
+      "en": "English",
+      "switch": "Switch language, currently {{language}}"
+    },
+    "theme": {
+      "auto": "Auto",
+      "light": "Light",
+      "dark": "Dark",
+      "switch": "Switch theme, currently {{theme}}"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "Member"
+    },
+    "status": {
+      "active": "Active",
+      "pending": "Pending",
+      "disabled": "Disabled"
+    },
+    "emailConfigured": "Email configured",
+    "emailNotConfigured": "Email not configured",
+    "resendIn": "Resend in {{seconds}}s",
+    "resend": "Resend",
+    "home": "Home"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "network": "Network error. Check your connection and try again.",
+    "setupSecret": "Incorrect secret",
+    "codes": {
+      "INVALID_CREDENTIALS": "Incorrect email or password",
+      "EMAIL_NOT_VERIFIED": "Email is not verified yet",
+      "ACCOUNT_PENDING": "Your account is awaiting admin approval",
+      "ACCOUNT_DISABLED": "This account is disabled",
+      "INVALID_CODE": "Incorrect verification code",
+      "CODE_EXPIRED": "The code has expired. Request a new one.",
+      "TOO_MANY_ATTEMPTS": "Too many attempts. Request a new code.",
+      "RESEND_COOLDOWN": "Sent too often. Please wait and try again.",
+      "RATE_LIMITED": "Too many attempts. Try again in {{seconds}} seconds.",
+      "EMAIL_NOT_CONFIGURED": "Email delivery is not configured on this site",
+      "REGISTRATION_DISABLED": "Registration is closed",
+      "EMAIL_TAKEN": "This email is already registered",
+      "TEMP_TOKEN_EXPIRED": "This sign-in expired. Enter your password again.",
+      "SETUP_UNAVAILABLE": "Setup is unavailable. Check the deployment secret.",
+      "PREFIX_CONFLICT": "The database is initialized under another table prefix",
+      "EMAIL_SEND_FAILED": "Failed to send email",
+      "INVALID_EMAIL": "Invalid email format",
+      "INVALID_PASSWORD": "Password does not meet the requirements",
+      "UNAUTHORIZED": "Please sign in first",
+      "FORBIDDEN": "You do not have permission for this action",
+      "PASSWORD_INCORRECT": "Current password is incorrect"
+    }
+  },
+  "home": {
+    "login": "Sign in",
+    "register": "Create account"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "submit": "Sign in",
+      "totpTitle": "Verification code",
+      "totpSubmit": "Verify",
+      "passkey": "Sign in with a passkey",
+      "passkeyFailed": "Passkey verification failed",
+      "forgot": "Forgot your password?",
+      "noAccount": "No account yet? <signup>Create one</signup>",
+      "noMethods": "No verification method is available for this account. Contact an administrator."
+    },
+    "register": {
+      "title": "Create account",
+      "submit": "Create account",
+      "haveAccount": "Already have an account? <signin>Sign in</signin>",
+      "pendingTitle": "Registration submitted",
+      "pendingBody": "An admin must approve your account before you can sign in.",
+      "verifyTitle": "Verify your email",
+      "verifyBody": "A verification code was sent to {{email}}.",
+      "verifySubmit": "Verify",
+      "verifiedTitle": "Email verified",
+      "goLogin": "Go to sign in",
+      "doneTitle": "Account created",
+      "verifiedBody": "{{email}} is verified."
+    },
+    "forgot": {
+      "title": "Reset password",
+      "emailStep": "Enter your account email",
+      "codeStep": "Enter the verification code",
+      "passwordStep": "Set a new password",
+      "sendCode": "Send code",
+      "submit": "Reset password",
+      "sentBody": "If the email is registered, a code has been sent.",
+      "doneTitle": "Password reset",
+      "doneBody": "Sign in with your new password."
+    },
+    "verify": {
+      "title": "Verify your email",
+      "body": "You need to verify your email before signing in. A code was sent to {{email}}.",
+      "submit": "Verify"
+    },
+    "validation": {
+      "emailRequired": "Enter your email",
+      "emailInvalid": "Invalid email format",
+      "passwordRequired": "Enter your password",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "codeRequired": "Enter the verification code",
+      "codeInvalid": "The code is 6 digits"
+    }
+  },
+  "setup": {
+    "title": "Setup",
+    "checking": "Checking setup state…",
+    "initSubtitle": "Enter the deployment secret to initialize the database.",
+    "upgradeSubtitle": "Enter the deployment secret to check and upgrade the database.",
+    "closedTitle": "Setup page is closed",
+    "closedBody": "An admin can re-open it under System.",
+    "secret": "Deployment secret",
+    "submitInit": "Initialize",
+    "submitUpgrade": "Check and upgrade",
+    "doneTitle": "Database is ready",
+    "tablePrefix": "Effective table prefix",
+    "noPrefix": "No prefix",
+    "migrations": "Migrations",
+    "applied": "Applied",
+    "skipped": "Skipped",
+    "goRegister": "Register the first user",
+    "ownerTitle": "Create the owner",
+    "ownerSubtitle": "Create the only owner account to finish setup.",
+    "ownerSubmit": "Create owner",
+    "displayName": "Display name"
+  },
+  "workbench": {
+    "title": "Workbench",
+    "nav": {
+      "workbench": "Workbench",
+      "settings": "Settings",
+      "about": "About",
+      "admin": "System"
+    },
+    "menu": "Menu",
+    "logout": "Sign out"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "profile": "Profile",
+      "security": "Security",
+      "preferences": "Preferences"
+    },
+    "profile": {
+      "title": "Profile",
+      "displayName": "Display name",
+      "email": "Email",
+      "emailVerified": "Verified",
+      "emailUnverified": "Unverified",
+      "role": "Role",
+      "saved": "Saved"
+    },
+    "security": {
+      "passwordTitle": "Change password",
+      "passwordSubmit": "Update password",
+      "passwordChanged": "Password updated",
+      "totpTitle": "Two-factor authentication",
+      "totpEnabled": "Enabled",
+      "totpDisabled": "Disabled",
+      "totpEnable": "Enable",
+      "totpDisable": "Disable",
+      "totpSecret": "Secret",
+      "totpScan": "Scan the QR code with your authenticator",
+      "totpCode": "Verification code",
+      "totpConfirm": "Confirm",
+      "totpDisabledToast": "Two-factor authentication disabled",
+      "passkeyTitle": "Passkey",
+      "passkeyAdd": "Add a passkey",
+      "passkeyEmpty": "No passkeys yet",
+      "passkeyCreatedAt": "Added {{date}}",
+      "passkeyLastUsed": "Last used {{date}}",
+      "passkeyDelete": "Remove",
+      "passkeyDeleted": "Passkey removed",
+      "passkeyUnsupported": "This browser does not support passkeys",
+      "passkeyAdded": "Passkey added"
+    },
+    "preferences": {
+      "language": "Interface language",
+      "languageHint": "Applies immediately and is saved to your account.",
+      "theme": "Theme",
+      "timezone": "Time zone",
+      "saved": "Preferences saved"
+    }
+  },
+  "about": {
+    "title": "About",
+    "description": "Description",
+    "stack": "Tech stack",
+    "stackFrontend": "Frontend",
+    "stackFrontendValue": "React + Vite + TypeScript, Tailwind CSS v4, shadcn/ui (Nova) + Radix UI",
+    "stackBackend": "Backend",
+    "stackBackendValue": "Cloudflare Workers + Hono, D1 (SQLite)",
+    "stackUi": "Interaction",
+    "stackUiValue": "Lucide icons, Zustand state",
+    "stackI18n": "Localization",
+    "stackI18nValue": "i18next + react-i18next (Chinese / English)",
+    "repository": "Repository",
+    "version": "Version",
+    "buildDate": "Build date",
+    "buildTime": "Build time",
+    "buildTimeZone": "Time zone",
+    "buildInfo": "Build info"
+  },
+  "admin": {
+    "title": "System",
+    "email": {
+      "title": "Email",
+      "provider": "Provider",
+      "none": "Not configured",
+      "smtp": "SMTP",
+      "resend": "Resend",
+      "host": "Host",
+      "port": "Port",
+      "username": "Username",
+      "password": "Password",
+      "apiKey": "API key",
+      "from": "From address",
+      "fromName": "From name",
+      "secretSet": "Set — leave blank to keep it",
+      "secretEmpty": "Not set",
+      "save": "Save email settings",
+      "saved": "Email settings saved",
+      "status": "Status",
+      "testTitle": "Send a test email",
+      "testTo": "Recipient",
+      "testSend": "Send",
+      "testSent": "Test email sent",
+      "testError": "Send failed",
+      "smtpHint": "Port 465 uses implicit TLS; other ports use STARTTLS."
+    },
+    "registration": {
+      "title": "Registration and approval",
+      "enabled": "Registration open",
+      "approvalRequired": "New users need admin approval",
+      "emailVerification": "New users must verify email",
+      "emailVerificationBlocked": "Email is not configured, so this switch cannot be enabled. Configure a provider first.",
+      "emailVerificationInactive": "Email is not configured, so this switch has no effect and new users are not asked to verify."
+    },
+    "users": {
+      "title": "Pending users",
+      "empty": "No pending users",
+      "approve": "Approve",
+      "reject": "Reject",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "requestedAt": "Requested {{date}}",
+      "displayName": "Name",
+      "actions": "Actions"
+    },
+    "maintenance": {
+      "title": "Database",
+      "setupPage": "Open the setup page",
+      "setupPageHint": "This only gates the page; the endpoint still requires the deployment secret.",
+      "tablePrefix": "Effective table prefix",
+      "run": "Check and upgrade database",
+      "running": "Running…",
+      "done": "Migrations complete",
+      "migrations": "Migrations",
+      "applied": "Applied",
+      "skipped": "Skipped"
+    }
+  }
+}

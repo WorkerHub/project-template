@@ -17,7 +17,11 @@
     "test": "pnpm --filter ./worker test && pnpm --filter ./web test",
     "check:identity": "node scripts/check-identity.mjs",
     "check:deploy": "pnpm build:web && pnpm --filter ./worker exec wrangler deploy --dry-run",
-    "schema:sql": "pnpm --filter ./worker schema:sql"
+    "schema:sql": "pnpm --filter ./worker schema:sql",
+    "predev": "node scripts/build-info.mjs",
+    "prebuild": "node scripts/build-info.mjs",
+    "pretypecheck": "node scripts/build-info.mjs",
+    "pretest": "node scripts/build-info.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
