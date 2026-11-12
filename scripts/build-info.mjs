@@ -10,7 +10,9 @@
  * 无 tag 时 v0.0.0-<提交数>-<短哈希> 兜底；完全没有 git 信息时 v0.0.0-0-unknown。
  * `git describe` 原始输出的第三段带 `g` 前缀，这里去掉。
  *
- * 何时跑：根与 web/worker 的 predev/prebuild/pretypecheck/pretest 钩子。
+ * 何时跑：根与 web/worker 的 predev/prebuild/pretypecheck/pretest 钩子；
+ * 部署时 deploy.yml 用 `node scripts/build-info.mjs --print` 取同一个版本号，
+ * 经 `wrangler deploy --var APP_VERSION=…` 交给 Worker 的 /api/public（§6.3）。
  */
 import { execFileSync } from "node:child_process"
 import { writeFileSync } from "node:fs"
@@ -75,6 +77,10 @@ function formatOffset(date) {
   return `${sign}${hours}:${minutes}`
 }
 
+// `--print`：只把版本号写到 stdout（CI 注入 Worker 变量用），不打印日志行。
+// 产物照旧落盘——单一代码路径，调用方不必关心文件与输出的取舍。
+const printOnly = process.argv.includes("--print")
+
 const now = new Date()
 const resolved = resolveVersion()
 
@@ -92,6 +98,10 @@ writeFileSync(
   `${JSON.stringify(buildInfo, null, 2)}\n`
 )
 
-console.log(
-  `build-info: ${buildInfo.version} · ${buildInfo.builtAt} (${buildInfo.timeZone} UTC${buildInfo.offset})`
-)
+if (printOnly) {
+  process.stdout.write(`${buildInfo.version}\n`)
+} else {
+  console.log(
+    `build-info: ${buildInfo.version} · ${buildInfo.builtAt} (${buildInfo.timeZone} UTC${buildInfo.offset})`
+  )
+}
