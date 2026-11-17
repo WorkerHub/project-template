@@ -91,7 +91,11 @@ describe("单人档", () => {
       email: "owner@example.test"
     })
     expect(login.status).toBe(200)
-    const body = (await login.json()) as { user: { role: string } }
+    const body = (await login.json()) as {
+      success: boolean
+      user: { role: string }
+    }
+    expect(body.success).toBe(true)
     expect(body.user.role).toBe("admin")
     const cookie = cookieFrom(login)
 

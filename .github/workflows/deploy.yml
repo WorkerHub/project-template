@@ -65,7 +65,7 @@ jobs:
       # 迁移不在这里跑：部署完成后由 setup 页 / 管理面「检查并升级数据库」触发同一套 runner。
       #
       # 版本号（§6.3）：与前端页脚同源，由 scripts/build-info.mjs 在 CI 内从 git describe 现算
-      # （tag 形态 v<semver>-<提交数>-<短哈希>，无 tag 兜底 v0.0.0-<提交数>-<短哈希>）。
+      # （tag 形态 v<semver>-<提交数>-<短哈希>，无 tag 兜底 v1.0.0-<提交数>-<短哈希>）。
       # APP_VERSION 非密钥，因此走 --var 注入、与 wrangler.toml 的 [vars] TABLE_PREFIX 并存；
       # 不进 secrets.json，也不进 scripts/materialize-secrets.mjs 的校验名单（该脚本不为此改动）。
       - name: Deploy Worker

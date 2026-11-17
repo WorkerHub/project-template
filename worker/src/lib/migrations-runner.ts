@@ -124,6 +124,10 @@ function migrationError(name: string, err: unknown): Error {
  * 执行所有未记账的迁移。每条迁移按「prepare → sql → 记账」执行，三阶段全部成功
  * 才记账；失败立即抛出，不记录该迁移、也不继续后续迁移（下次 setup 会重跑它，
  * 各阶段都是幂等的）。
+ *
+ * 生产库只读兼容：生产库历史上已应用过 schema_v1..v6，其账本中已存在 schema_v1。
+ * 坍缩为单一 V1 后，applied.has("schema_v1") 命中直接 skipped，不执行任何 DDL，
+ * 不写生产库账本（0 次写入），不丢数据。
  */
 export async function runLedgerMigrations(
   env: Env

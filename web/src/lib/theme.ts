@@ -3,7 +3,7 @@
  *
  * 三档语义与落地方式：
  * - `auto` = 跟随系统 `prefers-color-scheme`，系统变化时实时跟随（Provider 订阅）；
- * - 选择存 localStorage（键见 THEME_STORAGE_KEY），登录后由设置页写回账号偏好；
+ * - 只存本机：localStorage（键见 THEME_STORAGE_KEY），不随账号同步；
  * - 生效方式是 `<html>` 的 `.dark` class + `color-scheme`（shadcn 令牌在 index.css
  *   里按 `.dark` 切整套 CSS 变量），不允许逐组件写两套样式；
  * - 首屏防闪烁由 web/index.html 的内联脚本先跑一遍同一套解析（键与这里一致，
@@ -25,22 +25,6 @@ export const THEME_OPTIONS: { value: Theme; labelKey: string }[] = [
 
 export function isTheme(value: unknown): value is Theme {
   return value === "auto" || value === "light" || value === "dark"
-}
-
-/**
- * 账号侧的主题取值（users.theme，默认 `system`）：
- * 界面上的「自动」在库里是 `system`，读写各做一次映射，别把两种词混进 store。
- */
-export type AccountTheme = "system" | "light" | "dark"
-
-export function themeFromAccount(value: unknown): Theme | null {
-  if (value === "system" || value === "auto") return "auto"
-  if (value === "light" || value === "dark") return value
-  return null
-}
-
-export function themeToAccount(theme: Theme): AccountTheme {
-  return theme === "auto" ? "system" : theme
 }
 
 /** 当前系统外观（无 matchMedia 的环境按浅色处理）。 */

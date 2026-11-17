@@ -6,8 +6,7 @@ import { Field } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useCooldown } from "@/hooks/use-cooldown"
-import { currentLanguage } from "@/i18n"
-import { applyAccountPreferences } from "@/lib/account-prefs"
+import { applyAccountLanguage, currentLanguage } from "@/i18n"
 import { ApiError, authApi } from "@/lib/api"
 import { describeApiError, retryAfterSeconds } from "@/lib/api-errors"
 import type { Me, TwoFactorMethod } from "@/lib/api-types"
@@ -22,6 +21,7 @@ import { useSiteStore } from "@/stores/site"
 type Step =
   | { kind: "password" }
   | { kind: "totp"; tempToken: string; methods: TwoFactorMethod[] }
+  | { kind: "email"; tempToken: string; methods: TwoFactorMethod[] }
   | { kind: "verify"; email: string }
 
 /**
@@ -46,6 +46,8 @@ export function LoginPage() {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const cooldown = useCooldown()
+  const emailCooldown = useCooldown()
+  const [emailSent, setEmailSent] = useState(false)
 
   const from = (location.state as { from?: string } | null)?.from
   const canRegister =
@@ -55,16 +57,28 @@ export function LoginPage() {
   const methods = step.kind === "totp" ? step.methods : []
   const canUseTotp = methods.includes("totp")
   const canUsePasskey = passkeyAvailable && methods.includes("passkey")
+  const canUseEmail = methods.includes("email")
+  const noMethods = !canUseTotp && !canUsePasskey && !canUseEmail
 
   const finishLogin = async (user: Me) => {
     useAuthStore.getState().setUser(user)
-    await applyAccountPreferences(user, { pushLocal: true })
-    navigate(from && from !== "/login" ? from : "/workbench", { replace: true })
+    await applyAccountLanguage(user.language)
+    const returnTo = from && from !== "/login" ? from : undefined
+    if (user.mustChangePassword) {
+      // 首登强制改密：把原目标带到改密页，改完再回去。
+      navigate("/change-password", {
+        replace: true,
+        state: returnTo ? { from: returnTo } : undefined
+      })
+      return
+    }
+    navigate(returnTo ?? "/workbench", { replace: true })
   }
 
   const backToPassword = (message: string) => {
     setStep({ kind: "password" })
     setCode("")
+    setNotice("")
     setError(message)
   }
 
@@ -107,6 +121,62 @@ export function LoginPage() {
       setError(describeApiError(t, loginError))
       const retry = retryAfterSeconds(loginError)
       if (retry) cooldown.start(retry)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sendEmailCode = async () => {
+    if (step.kind !== "email") return
+    setBusy(true)
+    setError("")
+    setNotice("")
+    try {
+      await authApi.emailTwoFactorSend(step.tempToken)
+      setEmailSent(true)
+      emailCooldown.start(60)
+    } catch (sendError) {
+      if (
+        sendError instanceof ApiError &&
+        sendError.code === "STEP_UP_REQUIRED"
+      ) {
+        backToPassword(describeApiError(t, sendError))
+      } else {
+        setError(describeApiError(t, sendError))
+        const retry = retryAfterSeconds(sendError)
+        if (retry) emailCooldown.start(retry)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitEmailCode = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (step.kind !== "email") return
+    if (!/^\d{6}$/.test(code)) {
+      setError(t("auth.validation.codeInvalid"))
+      return
+    }
+
+    setBusy(true)
+    setError("")
+    try {
+      const result = await authApi.verifySecondFactor({
+        tempToken: step.tempToken,
+        method: "email",
+        code
+      })
+      await finishLogin(result.user)
+    } catch (verifyError) {
+      if (
+        verifyError instanceof ApiError &&
+        verifyError.code === "STEP_UP_REQUIRED"
+      ) {
+        backToPassword(describeApiError(t, verifyError))
+      } else {
+        setError(describeApiError(t, verifyError))
+      }
     } finally {
       setBusy(false)
     }
@@ -331,22 +401,47 @@ export function LoginPage() {
             </>
           ) : null}
 
-          {!canUseTotp && !canUsePasskey ? (
+          {step.kind === "totp" && (canUseEmail || canUsePasskey) ? (
+            <>
+              {canUseEmail ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => {
+                    setStep({
+                      kind: "email",
+                      tempToken: step.tempToken,
+                      methods: step.methods
+                    })
+                    setCode("")
+                    setError("")
+                    setNotice("")
+                    setEmailSent(false)
+                  }}
+                >
+                  {t("auth.login.email")}
+                </Button>
+              ) : null}
+              {canUsePasskey ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => void loginWithPasskey()}
+                >
+                  {t("auth.login.passkey")}
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+
+          {noMethods ? (
             <p role="alert" className="text-sm text-destructive">
               {t("auth.login.noMethods")}
             </p>
-          ) : null}
-
-          {canUsePasskey ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={busy}
-              onClick={() => void loginWithPasskey()}
-            >
-              {t("auth.login.passkey")}
-            </Button>
           ) : null}
 
           <Button
@@ -354,6 +449,95 @@ export function LoginPage() {
             variant="ghost"
             className="w-full"
             onClick={() => backToPassword("")}
+          >
+            {t("common.actions.back")}
+          </Button>
+        </form>
+      ) : null}
+
+      {step.kind === "email" ? (
+        <form
+          key="email-step"
+          id="email-step"
+          className="space-y-4"
+          onSubmit={submitEmailCode}
+        >
+          <p className="text-sm text-muted-foreground">
+            {t("auth.login.totpTitle")}
+          </p>
+
+          {!emailSent ? (
+            <>
+              {message(error)}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={busy || emailCooldown.running}
+                onClick={() => void sendEmailCode()}
+              >
+                {emailCooldown.running
+                  ? t("common.resendIn", { seconds: emailCooldown.seconds })
+                  : t("common.actions.sendCode")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p role="status" className="text-sm text-muted-foreground">
+                {t("common.codeSent")}
+              </p>
+
+              <Field id="email-code" label={t("common.code")}>
+                <Input
+                  id="email-code"
+                  name="email-code"
+                  type="text"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={code}
+                  aria-invalid={Boolean(error)}
+                  onChange={(event) =>
+                    setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                />
+              </Field>
+
+              {message(error)}
+
+              <Button type="submit" className="w-full" disabled={busy}>
+                {busy ? t("common.loading") : t("auth.login.emailSubmit")}
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                disabled={busy || emailCooldown.running}
+                onClick={() => void sendEmailCode()}
+              >
+                {emailCooldown.running
+                  ? t("common.resendIn", { seconds: emailCooldown.seconds })
+                  : t("common.resend")}
+              </Button>
+            </>
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              setStep({
+                kind: "totp",
+                tempToken: step.tempToken,
+                methods: step.methods
+              })
+              setCode("")
+              setError("")
+              setNotice("")
+              setEmailSent(false)
+            }}
           >
             {t("common.actions.back")}
           </Button>

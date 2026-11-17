@@ -4,18 +4,21 @@
       "save": "Save",
       "saving": "Saving…",
       "cancel": "Cancel",
+      "edit": "Edit",
       "confirm": "Confirm",
       "close": "Close",
       "retry": "Retry",
       "back": "Back",
       "next": "Next",
-      "submit": "Submit"
+      "submit": "Submit",
+      "sendCode": "Send code"
     },
     "loading": "Loading…",
     "email": "Email",
     "password": "Password",
     "newPassword": "New password",
     "currentPassword": "Current password",
+    "confirmPassword": "Confirm new password",
     "code": "Verification code",
     "codeSent": "Verification code sent",
     "codeExpires": "The code is valid for {{minutes}} minutes",
@@ -50,6 +53,7 @@
     "generic": "Something went wrong. Please try again.",
     "network": "Network error. Check your connection and try again.",
     "setupSecret": "Incorrect secret",
+    "notFound": "Page not found",
     "codes": {
       "INVALID_CREDENTIALS": "Incorrect email or password",
       "EMAIL_NOT_VERIFIED": "Email is not verified yet",
@@ -60,6 +64,7 @@
       "TOO_MANY_ATTEMPTS": "Too many attempts. Request a new code.",
       "RESEND_COOLDOWN": "Sent too often. Please wait and try again.",
       "RATE_LIMITED": "Too many attempts. Try again in {{seconds}} seconds.",
+      "CODE_COOLDOWN": "Sent too often. Try again in {{seconds}} seconds.",
       "EMAIL_NOT_CONFIGURED": "Email delivery is not configured on this site",
       "REGISTRATION_DISABLED": "Registration is closed",
       "EMAIL_TAKEN": "This email is already registered",
@@ -67,11 +72,18 @@
       "SETUP_UNAVAILABLE": "Setup is unavailable. Check the deployment secret.",
       "PREFIX_CONFLICT": "The database is initialized under another table prefix",
       "EMAIL_SEND_FAILED": "Failed to send email",
+      "EMAIL_NOT_ENABLED": "Email code verification is not enabled",
+      "EMAIL_ALREADY_ENABLED": "Email code verification is already enabled",
+      "STEP_UP_REQUIRED": "This sign-in expired. Enter your password again.",
       "INVALID_EMAIL": "Invalid email format",
       "INVALID_PASSWORD": "Password does not meet the requirements",
       "UNAUTHORIZED": "Please sign in first",
       "FORBIDDEN": "You do not have permission for this action",
-      "PASSWORD_INCORRECT": "Current password is incorrect"
+      "PASSWORD_INCORRECT": "Current password is incorrect",
+      "DISPLAY_NAME_LOCKED": "Display name editing is locked",
+      "SELF_ACTION_FORBIDDEN": "You cannot perform this action on your own account",
+      "LAST_ADMIN": "Keep at least one active admin",
+      "USER_NOT_FOUND": "User not found"
     }
   },
   "home": {
@@ -86,6 +98,8 @@
       "totpSubmit": "Verify",
       "passkey": "Sign in with a passkey",
       "passkeyFailed": "Passkey verification failed",
+      "email": "Sign in with email code",
+      "emailSubmit": "Verify",
       "forgot": "Forgot your password?",
       "noAccount": "No account yet? <signup>Create one</signup>",
       "noMethods": "No verification method is available for this account. Contact an administrator."
@@ -125,9 +139,14 @@
       "emailInvalid": "Invalid email format",
       "passwordRequired": "Enter your password",
       "passwordTooShort": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match",
       "codeRequired": "Enter the verification code",
       "codeInvalid": "The code is 6 digits"
     }
+  },
+  "changePassword": {
+    "title": "Change password",
+    "subtitle": "Set a new password to continue"
   },
   "setup": {
     "title": "Setup",
@@ -149,7 +168,7 @@
     "ownerTitle": "Create the owner",
     "ownerSubtitle": "Create the only owner account to finish setup.",
     "ownerSubmit": "Create owner",
-    "displayName": "Display name"
+    "displayName": "Nickname"
   },
   "workbench": {
     "title": "Workbench",
@@ -160,23 +179,19 @@
       "admin": "System"
     },
     "menu": "Menu",
+    "account": "Account",
+    "sidebar": {
+      "collapse": "Collapse sidebar",
+      "expand": "Expand sidebar",
+      "toggle": "Toggle sidebar"
+    },
     "logout": "Sign out"
   },
   "settings": {
     "title": "Settings",
     "tabs": {
-      "profile": "Profile",
       "security": "Security",
       "preferences": "Preferences"
-    },
-    "profile": {
-      "title": "Profile",
-      "displayName": "Display name",
-      "email": "Email",
-      "emailVerified": "Verified",
-      "emailUnverified": "Unverified",
-      "role": "Role",
-      "saved": "Saved"
     },
     "security": {
       "passwordTitle": "Change password",
@@ -192,6 +207,12 @@
       "totpCode": "Verification code",
       "totpConfirm": "Confirm",
       "totpDisabledToast": "Two-factor authentication disabled",
+      "emailTitle": "Email code",
+      "emailEnabled": "Enabled",
+      "emailDisabled": "Disabled",
+      "emailConfirm": "Confirm",
+      "emailDisable": "Disable",
+      "emailDisabledToast": "Email code verification disabled",
       "passkeyTitle": "Passkey",
       "passkeyAdd": "Add a passkey",
       "passkeyEmpty": "No passkeys yet",
@@ -205,10 +226,19 @@
     "preferences": {
       "language": "Interface language",
       "languageHint": "Applies immediately and is saved to your account.",
-      "theme": "Theme",
       "timezone": "Time zone",
       "saved": "Preferences saved"
     }
+  },
+
+  "profile": {
+    "title": "Profile",
+    "displayName": "Nickname",
+    "email": "Email",
+    "emailVerified": "Verified",
+    "emailUnverified": "Unverified",
+    "role": "Role",
+    "saved": "Saved"
   },
   "about": {
     "title": "About",
@@ -231,6 +261,12 @@
   },
   "admin": {
     "title": "System",
+    "tabs": {
+      "email": "Email",
+      "registration": "Registration & Approval",
+      "users": "Users",
+      "maintenance": "Database Maintenance"
+    },
     "email": {
       "title": "Email",
       "provider": "Provider",
@@ -257,6 +293,7 @@
       "smtpHint": "Port 465 uses implicit TLS; other ports use STARTTLS."
     },
     "registration": {
+      "lockDisplayName": "Lock display name",
       "title": "Registration and approval",
       "enabled": "Registration open",
       "approvalRequired": "New users need admin approval",
@@ -265,15 +302,52 @@
       "emailVerificationInactive": "Email is not configured, so this switch has no effect and new users are not asked to verify."
     },
     "users": {
-      "title": "Pending users",
-      "empty": "No pending users",
+      "title": "All users",
+      "empty": "No users",
       "approve": "Approve",
       "reject": "Reject",
       "approved": "Approved",
       "rejected": "Rejected",
-      "requestedAt": "Requested {{date}}",
+      "createdAt": "Created {{date}}",
       "displayName": "Name",
-      "actions": "Actions"
+      "role": "Role",
+      "status": "Status",
+      "emailUnverified": "Email unverified",
+      "self": "You",
+      "actions": "Actions",
+      "actionsFor": "Actions for {{email}}",
+      "reset": {
+        "title": "Reset password",
+        "password": "One-time password"
+      },
+      "disable": "Disable",
+      "enable": "Enable",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
+      "promote": "Make admin",
+      "demote": "Make member",
+      "roleChanged": "Role updated",
+      "delete": {
+        "title": "Delete user",
+        "confirm": "Delete",
+        "description": "Delete {{email}} ({{name}})? This cannot be undone.",
+        "done": "User deleted"
+      },
+      "create": {
+        "title": "Create user",
+        "email": "Email",
+        "role": "Role",
+        "displayName": "Display name (optional)",
+        "submit": "Create user",
+        "creating": "Creating…",
+        "emailRequired": "Enter an email address",
+        "createdTitle": "User created",
+        "password": "Initial password",
+        "passwordOnce": "This password is shown once. It cannot be viewed again after you close this.",
+        "copy": "Copy",
+        "copied": "Copied",
+        "copyFailed": "Copy failed — select the password and copy it manually"
+      }
     },
     "maintenance": {
       "title": "Database",

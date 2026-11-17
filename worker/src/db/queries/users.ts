@@ -5,7 +5,13 @@
  * admin + active + 已验证，之后才按开关决定待批准/待验证。这样两个并发首注册
  * 不会各建一个管理员（SQLite 在一条语句里判 `NOT EXISTS`）。
  */
-import { emailCodesTable, usersTable } from "../../lib/tables"
+import {
+  emailCodesTable,
+  passkeysTable,
+  sessionsTable,
+  user2faTable,
+  usersTable
+} from "../../lib/tables"
 
 export type UserStatus = "pending" | "active" | "disabled"
 export type UserRole = "admin" | "user"
@@ -20,13 +26,14 @@ export interface UserRow {
   language: string
   display_name: string
   timezone: string
-  theme: string
   created_at: string
   updated_at: string
+  /** 首登强制改密标记：1 = 需改密（管理员建号），0 = 无需。 */
+  must_change_password: number
 }
 
-const USER_COLUMNS = `id, email, password_hash, role, status, email_verified, language,
-  display_name, timezone, theme, created_at, updated_at`
+const USER_COLUMNS = `id, email, password_hash, role, status, email_verified,
+  language, display_name, timezone, created_at, updated_at, must_change_password`
 
 export async function findUserByEmail(
   db: D1Database,
@@ -73,14 +80,14 @@ export async function insertRegisteredUser(
     .prepare(
       `INSERT INTO ${table}
         (email, password_hash, role, status, email_verified, language,
-         display_name, timezone, theme, created_at, updated_at)
+         display_name, timezone, created_at, updated_at)
        SELECT ?, ?,
          CASE WHEN NOT EXISTS (SELECT 1 FROM ${table}) THEN 'admin' ELSE 'user' END,
          CASE WHEN NOT EXISTS (SELECT 1 FROM ${table}) THEN 'active'
               WHEN ? = 1 THEN 'pending' ELSE 'active' END,
          CASE WHEN NOT EXISTS (SELECT 1 FROM ${table}) THEN 1
               WHEN ? = 1 THEN 0 ELSE 1 END,
-         ?, '', 'Asia/Shanghai', 'system', ?, ?`
+         ?, '', 'Asia/Shanghai', ?, ?`
     )
     .bind(
       input.email,
@@ -106,7 +113,7 @@ const UPDATABLE_FIELDS = [
   "language",
   "display_name",
   "timezone",
-  "theme"
+  "must_change_password"
 ] as const
 
 export type UpdatableField = (typeof UPDATABLE_FIELDS)[number]
@@ -137,37 +144,48 @@ export async function updateUserFields(
     .run()
 }
 
-export interface PendingUserView {
+export function isUserStatus(value: string): value is UserStatus {
+  return value === "pending" || value === "active" || value === "disabled"
+}
+
+export interface AdminUserView {
   id: number
   email: string
   displayName: string
-  language: string
+  role: UserRole
+  status: UserStatus
+  emailVerified: boolean
   createdAt: string
 }
 
-export async function listPendingUsers(
+/** 管理员用户列表：全量（可按状态过滤），按 id 升序。 */
+export async function listUsers(
   db: D1Database,
-  prefix: string
-): Promise<PendingUserView[]> {
-  const rows = await db
-    .prepare(
-      `SELECT id, email, display_name, language, created_at
-         FROM ${usersTable(prefix)}
-        WHERE status = 'pending'
-        ORDER BY id ASC`
-    )
-    .all<{
-      id: number
-      email: string
-      display_name: string
-      language: string
-      created_at: string
-    }>()
+  prefix: string,
+  status?: UserStatus
+): Promise<AdminUserView[]> {
+  const statement = db.prepare(
+    `SELECT id, email, display_name, role, status, email_verified, created_at
+       FROM ${usersTable(prefix)}
+      ${status ? "WHERE status = ?" : ""}
+      ORDER BY id ASC`
+  )
+  const rows = await (status ? statement.bind(status) : statement).all<{
+    id: number
+    email: string
+    display_name: string
+    role: UserRole
+    status: UserStatus
+    email_verified: number
+    created_at: string
+  }>()
   return rows.results.map((row) => ({
     id: row.id,
     email: row.email,
     displayName: row.display_name,
-    language: row.language,
+    role: row.role,
+    status: row.status,
+    emailVerified: row.email_verified === 1,
     createdAt: row.created_at
   }))
 }
@@ -241,8 +259,8 @@ export async function insertOwner(
     .prepare(
       `INSERT INTO ${usersTable(prefix)}
         (email, password_hash, role, status, email_verified, language,
-         display_name, timezone, theme, created_at, updated_at)
-       VALUES (?, ?, 'admin', 'active', 1, ?, '', 'Asia/Shanghai', 'system', ?, ?)`
+         display_name, timezone, created_at, updated_at)
+       VALUES (?, ?, 'admin', 'active', 1, ?, '', 'Asia/Shanghai', ?, ?)`
     )
     .bind(input.email, input.passwordHash, input.language, now, now)
     .run()
@@ -250,4 +268,87 @@ export async function insertOwner(
   const user = await findUserByEmail(db, prefix, input.email)
   if (!user) throw new Error("owner row missing after insert")
   return user
+}
+
+export interface AdminCreatedUserInput {
+  email: string
+  passwordHash: string
+  role: UserRole
+  displayName: string
+  language: string
+  timezone: string
+}
+
+/** 管理员手动建号：直接激活 + 已验证 + 首登强制改密，绕过注册审核/验证开关。 */
+export async function insertAdminCreatedUser(
+  db: D1Database,
+  prefix: string,
+  input: AdminCreatedUserInput
+): Promise<UserRow> {
+  const table = usersTable(prefix)
+  const now = new Date().toISOString()
+  await db
+    .prepare(
+      `INSERT INTO ${table}
+        (email, password_hash, role, status, email_verified, language,
+         display_name, timezone, must_change_password,
+         created_at, updated_at)
+       VALUES (?, ?, ?, 'active', 1, ?, ?, ?, 1, ?, ?)`
+    )
+    .bind(
+      input.email,
+      input.passwordHash,
+      input.role,
+      input.language,
+      input.displayName,
+      input.timezone,
+      now,
+      now
+    )
+    .run()
+
+  const user = await findUserByEmail(db, prefix, input.email)
+  if (!user) throw new Error("admin-created user row missing after insert")
+  return user
+}
+
+/**
+ * 「能登录的管理员」数量：`role = 'admin' AND status = 'active'`。
+ * 护栏（LAST_ADMIN）的口径：删除/停用/降级命中最后一个可登录管理员时拒绝。
+ */
+export async function countActiveAdmins(
+  db: D1Database,
+  prefix: string
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS total FROM ${usersTable(prefix)}
+        WHERE role = 'admin' AND status = 'active'`
+    )
+    .first<{ total: number }>()
+  return Number(row?.total ?? 0)
+}
+
+/**
+ * 硬删用户：连同 sessions、user_2fa、passkey_credentials 一并清（规格定版口径，
+ * 不碰 email_verification_codes——验证码按过期时间自然失效）。
+ * 调用方先确认护栏（自删 403 / 最后管理员 409）再调用。
+ */
+export async function deleteUser(
+  db: D1Database,
+  prefix: string,
+  id: number
+): Promise<void> {
+  await db.batch([
+    db
+      .prepare(`DELETE FROM ${sessionsTable(prefix)} WHERE user_id = ?`)
+      .bind(id),
+    db
+      .prepare(`DELETE FROM ${user2faTable(prefix)} WHERE user_id = ?`)
+      .bind(id),
+    db
+      .prepare(`DELETE FROM ${passkeysTable(prefix)} WHERE user_id = ?`)
+      .bind(id),
+    db.prepare(`DELETE FROM ${usersTable(prefix)} WHERE id = ?`).bind(id)
+  ])
 }

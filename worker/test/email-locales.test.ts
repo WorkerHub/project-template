@@ -11,7 +11,11 @@ import {
   type CodeEmailPurpose
 } from "../src/locales/email"
 
-const PURPOSES: CodeEmailPurpose[] = ["register_verify", "password_reset"]
+const PURPOSES: CodeEmailPurpose[] = [
+  "register_verify",
+  "password_reset",
+  "email_2fa"
+]
 
 describe("邮件模板双语", () => {
   it("两种语言 × 两种用途都有完整 subject/html/text，且不互相等同", () => {

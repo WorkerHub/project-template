@@ -15,6 +15,7 @@ const smtpMock = vi.hoisted(() => ({
 
 vi.mock("../src/services/smtp-transport", () => smtpMock)
 
+import { PROJECT_NAME } from "../src/config/project"
 import {
   isEmailConfigured,
   readEmailSettings,
@@ -104,7 +105,7 @@ describe("发送通道", () => {
       to: "user@example.test",
       subject: "hi",
       text: "hi",
-      from: "Template <noreply@example.test>"
+      from: `${PROJECT_NAME} <noreply@example.test>`
     })
     stub.restore()
 

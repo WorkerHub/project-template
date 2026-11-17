@@ -24,6 +24,32 @@ Object.defineProperty(window, "matchMedia", {
   }))
 })
 
+// jsdom 未实现 Pointer Capture API，Radix Select 等组件会调用它。
+if (typeof Element !== "undefined") {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = vi.fn(() => false)
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = vi.fn()
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = vi.fn()
+  }
+  // jsdom 未实现 scrollIntoView，Radix Select 打开下拉时会调用。
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = vi.fn()
+  }
+}
+
+// jsdom 未实现 ResizeObserver，Radix Popper / Tooltip 测量锚点尺寸时会 new 它。
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}
+
 async function resetStores() {
   const [
     { useAuthStore },

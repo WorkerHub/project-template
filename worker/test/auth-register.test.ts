@@ -51,10 +51,11 @@ describe("注册：首个用户与审核", () => {
     const login = await loginUser(env, { email: "owner@example.test" })
     expect(login.status).toBe(200)
     const body = (await login.json()) as {
-      requires2fa: boolean
+      success: boolean
       user: { email: string; role: string }
     }
-    expect(body.requires2fa).toBe(false)
+    expect(body.success).toBe(true)
+    expect("requires2fa" in body).toBe(false)
     expect(body.user).toMatchObject({
       email: "owner@example.test",
       role: "admin"
@@ -83,10 +84,10 @@ describe("注册：首个用户与审核", () => {
       headers: { cookie: admin }
     })
     const pendingBody = (await pending.json()) as {
-      users: Array<{ id: number; email: string }>
+      items: Array<{ id: number; email: string }>
     }
-    expect(pendingBody.users).toHaveLength(1)
-    const memberId = pendingBody.users[0].id
+    expect(pendingBody.items).toHaveLength(1)
+    const memberId = pendingBody.items[0].id
 
     const approve = await postJson(
       env,
@@ -131,10 +132,12 @@ describe("注册：首个用户与审核", () => {
     const admin = await adminCookie(env)
 
     await registerUser(env, { email: "spam@example.test" })
-    const pending = (await (
+    const list = (await (
       await request(env, "/api/admin/users", { headers: { cookie: admin } })
-    ).json()) as { users: Array<{ id: number }> }
-    const id = pending.users[0].id
+    ).json()) as { items: Array<{ id: number; email: string }> }
+    const spam = list.items.find((item) => item.email === "spam@example.test")
+    if (!spam) throw new Error("spam user missing from admin list")
+    const id = spam.id
 
     const reject = await postJson(
       env,

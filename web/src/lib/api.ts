@@ -9,14 +9,19 @@
  * - 只有带 body 的请求才设 Content-Type，GET 与 204 不碰。
  */
 import type {
+  AdminChangeRoleInput,
+  AdminCreateUserInput,
+  AdminCreateUserResult,
+  AdminResetPasswordResult,
   AdminSettings,
   AdminSettingsUpdate,
+  AdminUser,
+  AdminUserActionResult,
   LoginResult,
   Me,
   MeUpdateInput,
   MigrationResult,
   PasskeySummary,
-  PendingUser,
   PublicInfo,
   RegisterResult,
   SetupOwnerInput,
@@ -124,7 +129,7 @@ export const setupApi = {
       headers: { "X-Setup-Secret": secret }
     }),
   createOwner: (secret: string, input: SetupOwnerInput) =>
-    request<{ success: true; user: Me }>("/setup/owner", {
+    request<{ success: true }>("/setup/owner", {
       method: "POST",
       headers: { "X-Setup-Secret": secret },
       body: input
@@ -215,6 +220,29 @@ export const authApi = {
     request<{ success: true }>("/auth/2fa/passkey/register/verify", {
       method: "POST",
       body: { credential }
+    }),
+
+  emailTwoFactorSend: (tempToken: string) =>
+    request<{ success: true }>("/auth/2fa/email/send", {
+      method: "POST",
+      body: { tempToken }
+    }),
+
+  emailTwoFactorEnableSend: () =>
+    request<{ success: true }>("/auth/2fa/email/enable/send", {
+      method: "POST"
+    }),
+
+  emailTwoFactorEnable: (code: string) =>
+    request<{ success: true }>("/auth/2fa/email/enable", {
+      method: "POST",
+      body: { code }
+    }),
+
+  emailTwoFactorDisable: (password: string) =>
+    request<{ success: true }>("/auth/2fa/email/disable", {
+      method: "POST",
+      body: { password }
     })
 }
 
@@ -256,8 +284,13 @@ export const adminApi = {
       body: { to }
     }),
 
-  pendingUsers: () =>
-    request<{ items: PendingUser[] }>("/admin/users?status=pending"),
+  createUser: (input: AdminCreateUserInput) =>
+    request<AdminCreateUserResult>("/admin/users", {
+      method: "POST",
+      body: input
+    }),
+
+  users: () => request<{ items: AdminUser[] }>("/admin/users"),
 
   approveUser: (id: number) =>
     request<{ success: true }>(`/admin/users/${id}/approve`, {
@@ -266,6 +299,32 @@ export const adminApi = {
 
   rejectUser: (id: number) =>
     request<{ success: true }>(`/admin/users/${id}/reject`, { method: "POST" }),
+
+  resetUserPassword: (id: number) =>
+    request<AdminResetPasswordResult>(`/admin/users/${id}/reset-password`, {
+      method: "POST"
+    }),
+
+  disableUser: (id: number) =>
+    request<AdminUserActionResult>(`/admin/users/${id}/disable`, {
+      method: "POST"
+    }),
+
+  enableUser: (id: number) =>
+    request<AdminUserActionResult>(`/admin/users/${id}/enable`, {
+      method: "POST"
+    }),
+
+  changeUserRole: (id: number, input: AdminChangeRoleInput) =>
+    request<AdminUserActionResult>(`/admin/users/${id}/role`, {
+      method: "POST",
+      body: input
+    }),
+
+  deleteUser: (id: number) =>
+    request<AdminUserActionResult>(`/admin/users/${id}/delete`, {
+      method: "POST"
+    }),
 
   runSetup: () => request<AdminSetupResult>("/admin/setup", { method: "POST" })
 }

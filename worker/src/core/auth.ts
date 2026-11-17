@@ -139,3 +139,16 @@ export async function verifyPassword(
   const hashHex = bufToHex(await derivePassword(password, salt))
   return safeEqual(hashHex, storedHash)
 }
+
+/** 密码学安全随机源生成的一次性初始密码：16 位无歧义字符（排除 0/O/1/l/I）。 */
+const TEMPORARY_PASSWORD_CHARS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+
+export function generateTemporaryPassword(length = 16): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length))
+  let password = ""
+  for (const byte of bytes) {
+    password += TEMPORARY_PASSWORD_CHARS[byte % TEMPORARY_PASSWORD_CHARS.length]
+  }
+  return password
+}

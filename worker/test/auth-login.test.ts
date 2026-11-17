@@ -76,9 +76,13 @@ describe("两步登录", () => {
       code
     })
     expect(verified.status).toBe(200)
-    expect(
-      ((await verified.json()) as { requires2fa: boolean }).requires2fa
-    ).toBe(false)
+    const verifiedBody = (await verified.json()) as {
+      success: boolean
+      user: { email: string }
+    }
+    expect(verifiedBody.success).toBe(true)
+    expect(verifiedBody.user.email).toBe("owner@example.test")
+    expect("requires2fa" in verifiedBody).toBe(false)
     const session = cookieFrom(verified)
     expect(session.startsWith("session=")).toBe(true)
 

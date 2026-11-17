@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ApiError, authApi, meApi } from "@/lib/api"
+import { adminApi, ApiError, authApi, meApi } from "@/lib/api"
 import { useAuthStore } from "@/stores/auth"
 import { me } from "@/test/fixtures"
 
@@ -54,5 +54,58 @@ describe("401 处理", () => {
     ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" })
     await Promise.resolve()
     expect(useAuthStore.getState().user).not.toBeNull()
+  })
+})
+
+describe("用户管理操作列端点", () => {
+  /** 五个端点已在后端冻结：路径、方法与 role 请求体由这里锁住，防止前端漂移。 */
+  function recordFetch() {
+    const calls: Array<{ url: string; method: string; body: unknown }> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({
+          url,
+          method: init.method ?? "GET",
+          body: init.body
+        })
+        return respond(200, { success: true })
+      })
+    )
+    return calls
+  }
+
+  it("重置密码 / 停用 / 启用 / 删除走 POST 且无请求体", async () => {
+    const calls = recordFetch()
+
+    await adminApi.resetUserPassword(7)
+    await adminApi.disableUser(7)
+    await adminApi.enableUser(7)
+    await adminApi.deleteUser(7)
+
+    expect(calls).toEqual([
+      {
+        url: "/api/admin/users/7/reset-password",
+        method: "POST",
+        body: undefined
+      },
+      { url: "/api/admin/users/7/disable", method: "POST", body: undefined },
+      { url: "/api/admin/users/7/enable", method: "POST", body: undefined },
+      { url: "/api/admin/users/7/delete", method: "POST", body: undefined }
+    ])
+  })
+
+  it("变更角色把目标角色放进请求体", async () => {
+    const calls = recordFetch()
+
+    await adminApi.changeUserRole(7, { role: "admin" })
+
+    expect(calls).toEqual([
+      {
+        url: "/api/admin/users/7/role",
+        method: "POST",
+        body: JSON.stringify({ role: "admin" })
+      }
+    ])
   })
 })

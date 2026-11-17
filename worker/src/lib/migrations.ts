@@ -1,12 +1,13 @@
 /**
- * 迁移的唯一定义处：结构坍缩后的单一基线 `schema_v1`。
+ * 迁移的唯一定义处：单一基线 `schema_v1`（历史增量 schema_v1..v6 坍缩）。
  *
- * - 全新库：`schema_v1` 的 sql 按 schema.ts 的定版 DDL 一次建出全部表/索引。
+ * - 全新库：`schema_v1` 的 sql 按 schema.ts 的定版 DDL 一次建出全部表与索引即最终形态。
+ * - 生产库：已有 v1..v6 历史记录的生产库由执行器只读识别为已最新（账本已有 schema_v1，
+ *   直接 skipped），不重跑、不报错、不写任何数据（含账本）。
  * - 重复执行：全部 `CREATE … IF NOT EXISTS`，幂等空操作（账本已记账时直接 skipped）。
- * - 今后结构变化从 `schema_v2` 往后追加；`schema_v1` 不得改名、改内容或调序。
  *
  * 语句之间用 `;` 分隔，语句内部不得出现 `;`（含字符串字面量）。
- * 表名/索引名一律经 tables.ts / schema.ts 拼装，本文件只写 `{prefix}` 占位。
+ * 表名/索引名一律经 tables.ts（基线迁移经 schema.ts 的 `{prefix}` 占位）拼装，不写死前缀。
  */
 import { SCHEMA_INDEXES, SCHEMA_TABLES, baselineStatements } from "./schema"
 import { tableName } from "./tables"
@@ -24,7 +25,7 @@ export interface Migration {
   prepare?: (ctx: MigrationContext) => Promise<void>
 }
 
-/** 唯一基线迁移名。追加迁移从 schema_v2 起，不改这一条。 */
+/** 唯一基线迁移名（坍缩为单一 V1）。 */
 export const BASELINE_MIGRATION = "schema_v1"
 
 export function getMigrations(prefix: string): Migration[] {

@@ -5,9 +5,7 @@ import {
   applyTheme,
   readStoredTheme,
   resolveTheme,
-  THEME_STORAGE_KEY,
-  themeFromAccount,
-  themeToAccount
+  THEME_STORAGE_KEY
 } from "@/lib/theme"
 
 describe("三档主题解析", () => {
@@ -16,15 +14,6 @@ describe("三档主题解析", () => {
     expect(resolveTheme("auto", false)).toBe("light")
     expect(resolveTheme("light", true)).toBe("light")
     expect(resolveTheme("dark", false)).toBe("dark")
-  })
-
-  it("账号侧 system/light/dark 与界面三档互转", () => {
-    expect(themeFromAccount("system")).toBe("auto")
-    expect(themeFromAccount("dark")).toBe("dark")
-    expect(themeFromAccount("light")).toBe("light")
-    expect(themeFromAccount("nonsense")).toBeNull()
-    expect(themeToAccount("auto")).toBe("system")
-    expect(themeToAccount("dark")).toBe("dark")
   })
 })
 

@@ -20,6 +20,33 @@ export interface BuildInfo {
 
 export const buildInfo = raw as BuildInfo
 
+/**
+ * 把 `buildInfo.version`（`v<semver>-<提交数>-<短哈希>`）拆成截图三段式所需的
+ * `{ semver, commitCount, commit }`。解析失败返回 `null`，调用方回落整串版本号。
+ */
+export function versionSegments(): {
+  semver: string
+  commitCount: number
+  commit: string
+} | null {
+  const parts = buildInfo.version.split("-")
+  if (parts.length < 3) return null
+  const semver = /^v?\d+\.\d+\.\d+/.exec(parts[0])?.[0].replace(/^v/, "")
+  const commitCount = Number(parts[parts.length - 2])
+  const commit = parts[parts.length - 1]
+  if (!semver || !Number.isInteger(commitCount)) return null
+  return { semver, commitCount, commit }
+}
+
+/** 侧栏/页脚展示用：`站名 · <semver> · <短哈希>+build.<提交数>`，无站名只给版本。 */
+export function buildVersionLabel(name?: string): string {
+  const segments = versionSegments()
+  const version = segments
+    ? `${segments.semver} · ${segments.commit}+build.${segments.commitCount}`
+    : buildInfo.version
+  return name ? `${name} · ${version}` : version
+}
+
 function format(date: Date, options: Intl.DateTimeFormatOptions): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: buildInfo.timeZone,

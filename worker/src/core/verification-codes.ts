@@ -13,7 +13,7 @@ import { getTablePrefix } from "../lib/table-prefix"
 import { emailCodesTable } from "../lib/tables"
 import type { Env } from "../types"
 
-export type CodePurpose = "register_verify" | "password_reset"
+export type CodePurpose = "register_verify" | "password_reset" | "email_2fa"
 
 export const CODE_TTL_SECONDS = 10 * 60
 export const CODE_MAX_ATTEMPTS = 5
