@@ -7,6 +7,7 @@
  */
 import { Hono } from "hono"
 import { wakerGateState } from "./core/waker-gate"
+import { buildWebAppManifest } from "./lib/manifest"
 import { getTablePrefix, isValidTablePrefix } from "./lib/table-prefix"
 import { authMiddleware } from "./middleware/auth"
 import { adminRoutes } from "./routes/admin"
@@ -52,6 +53,7 @@ const PUBLIC_ROUTES = new Set([
   "POST /api/auth/register",
   "POST /api/auth/login",
   "POST /api/auth/2fa/verify",
+  "POST /api/auth/2fa/email/send",
   "POST /api/auth/2fa/passkey/options",
   "POST /api/auth/2fa/passkey/verify",
   "POST /api/auth/logout",
@@ -83,6 +85,15 @@ app.route("/api/me", meRoutes)
 app.route("/api/admin", adminRoutes)
 app.route("/api/setup", setupRoutes)
 app.route("/_waker", wakerRoutes)
+
+// PWA 安装清单（规格第 4 项）：由 Worker 从身份真源动态生成，名字零第二份字面量。
+// 必须在 SPA 回落 app.get("*") 之前注册；缓存口径与 /api/public 对齐。
+app.get("/manifest.webmanifest", (c) =>
+  c.newResponse(JSON.stringify(buildWebAppManifest()), 200, {
+    "Content-Type": "application/manifest+json",
+    "Cache-Control": "public, max-age=60"
+  })
+)
 
 // 存活探针。生效前缀不在这里暴露——它只经 setup / 管理面的接口回显。
 app.get("/api/health", (c) => c.json({ status: "ok" }))

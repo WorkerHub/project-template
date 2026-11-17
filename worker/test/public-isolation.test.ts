@@ -81,11 +81,14 @@ describe("公开面隔离", () => {
     const body = JSON.parse(raw) as {
       email: string
       emailVerified: boolean
-      twoFactor: { totpEnabled: boolean; passkeyCount: number }
+      totpEnabled: boolean
+      passkeyCount: number
     }
     expect(body.email).toBe("owner@example.test")
     expect(body.emailVerified).toBe(true)
-    expect(body.twoFactor).toEqual({ totpEnabled: false, passkeyCount: 0 })
+    expect(body.totpEnabled).toBe(false)
+    expect(body.passkeyCount).toBe(0)
+    expect(body).not.toHaveProperty("twoFactor")
   })
 
   it("未知 API 一律 JSON：未登录 401、已登录 404，都不落 SPA 回落", async () => {

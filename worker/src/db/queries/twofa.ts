@@ -8,6 +8,7 @@ export interface TwoFactorRow {
   user_id: number
   totp_secret: string | null
   totp_enabled: number
+  email_2fa_enabled: number
   updated_at: string
 }
 
@@ -18,7 +19,7 @@ export async function getTwoFactor(
 ): Promise<TwoFactorRow | null> {
   return db
     .prepare(
-      `SELECT user_id, totp_secret, totp_enabled, updated_at
+      `SELECT user_id, totp_secret, totp_enabled, email_2fa_enabled, updated_at
          FROM ${user2faTable(prefix)} WHERE user_id = ?`
     )
     .bind(userId)
@@ -42,5 +43,25 @@ export async function upsertTwoFactor(
          updated_at = excluded.updated_at`
     )
     .bind(userId, patch.totpSecret ?? null, patch.totpEnabled, now)
+    .run()
+}
+
+/** 开关邮箱第二因子；冲突分支只动 email 标志与更新时间，不碰 TOTP 字段。 */
+export async function setEmailTwoFactorEnabled(
+  db: D1Database,
+  prefix: string,
+  userId: number,
+  enabled: boolean
+): Promise<void> {
+  const now = new Date().toISOString()
+  await db
+    .prepare(
+      `INSERT INTO ${user2faTable(prefix)} (user_id, totp_secret, totp_enabled, email_2fa_enabled, updated_at)
+       VALUES (?, NULL, 0, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         email_2fa_enabled = excluded.email_2fa_enabled,
+         updated_at = excluded.updated_at`
+    )
+    .bind(userId, enabled ? 1 : 0, now)
     .run()
 }

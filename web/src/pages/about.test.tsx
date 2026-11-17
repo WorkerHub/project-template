@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest"
 import { AuthShell } from "@/components/auth-shell"
 import { buildInfo } from "@/lib/build-info"
 import { AboutPage } from "@/pages/about"
-import { publicInfo } from "@/test/fixtures"
+import { PROJECT_NAME, publicInfo } from "@/test/fixtures"
 import { useSiteStore } from "@/stores/site"
 
 describe("关于页", () => {
   it("版本号、构建日期/时间与页脚同源，仓库地址来自身份单点", () => {
     useSiteStore.setState({
       info: publicInfo({
-        name: "Template",
+        name: PROJECT_NAME,
         tagline: "A thin skeleton",
         repositoryUrl: "https://example.com/template"
       }),

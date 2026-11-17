@@ -10,6 +10,7 @@ import { getTwoFactor } from "../db/queries/twofa"
 import type { UserRow } from "../db/queries/users"
 import type { Env } from "../types"
 
+import { readProfileLockSettings } from "./settings"
 export interface UserView {
   id: number
   email: string
@@ -18,11 +19,14 @@ export interface UserView {
   status: string
   language: string
   timezone: string
-  theme: string
   emailVerified: boolean
-  twoFactor: {
-    totpEnabled: boolean
-    passkeyCount: number
+  /** 首登强制改密标记；true 时前端引导改密后再放行。 */
+  mustChangePassword: boolean
+  totpEnabled: boolean
+  emailTwoFactorEnabled: boolean
+  passkeyCount: number
+  profileLocks: {
+    displayNameLocked: boolean
   }
 }
 
@@ -32,6 +36,7 @@ export async function buildUserView(
 ): Promise<UserView> {
   const prefix = getTablePrefix(env)
   const twoFactor = await getTwoFactor(env.DB, prefix, user.id)
+  const passkeyCount = await countPasskeys(env.DB, prefix, user.id)
   return {
     id: user.id,
     email: user.email,
@@ -40,11 +45,11 @@ export async function buildUserView(
     status: user.status,
     language: user.language,
     timezone: user.timezone,
-    theme: user.theme,
     emailVerified: user.email_verified === 1,
-    twoFactor: {
-      totpEnabled: Boolean(twoFactor?.totp_enabled),
-      passkeyCount: await countPasskeys(env.DB, prefix, user.id)
-    }
+    mustChangePassword: user.must_change_password === 1,
+    totpEnabled: Boolean(twoFactor?.totp_enabled),
+    emailTwoFactorEnabled: Boolean(twoFactor?.email_2fa_enabled),
+    passkeyCount,
+    profileLocks: await readProfileLockSettings(env)
   }
 }

@@ -26,7 +26,10 @@ export interface EmailContent {
   text: string
 }
 
-export type CodeEmailPurpose = "register_verify" | "password_reset"
+export type CodeEmailPurpose =
+  | "register_verify"
+  | "password_reset"
+  | "email_2fa"
 
 const CODE_TTL_MINUTES = 10
 
@@ -50,6 +53,11 @@ export function renderCodeEmail(
         subject: `${PROJECT_NAME} 密码重置验证码`,
         html: `<p>您的密码重置验证码是：<strong>${code}</strong></p><p>有效期 ${CODE_TTL_MINUTES} 分钟。如果不是您本人操作，请忽略本邮件。</p>`,
         text: `您的密码重置验证码是：${code}\n有效期 ${CODE_TTL_MINUTES} 分钟。如果不是您本人操作，请忽略本邮件。`
+      },
+      email_2fa: {
+        subject: `${PROJECT_NAME} 安全验证码`,
+        html: `<p>您的安全验证码是：<strong>${code}</strong></p><p>有效期 ${CODE_TTL_MINUTES} 分钟。如果不是您本人操作，请忽略本邮件。</p>`,
+        text: `您的安全验证码是：${code}\n有效期 ${CODE_TTL_MINUTES} 分钟。如果不是您本人操作，请忽略本邮件。`
       }
     },
     en: {
@@ -62,6 +70,11 @@ export function renderCodeEmail(
         subject: `${PROJECT_NAME} password reset code`,
         html: `<p>Your password reset code is: <strong>${code}</strong></p><p>It expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, ignore this email.</p>`,
         text: `Your password reset code is: ${code}\nIt expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, ignore this email.`
+      },
+      email_2fa: {
+        subject: `${PROJECT_NAME} security verification code`,
+        html: `<p>Your security verification code is: <strong>${code}</strong></p><p>It expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, ignore this email.</p>`,
+        text: `Your security verification code is: ${code}\nIt expires in ${CODE_TTL_MINUTES} minutes. If you did not request this, ignore this email.`
       }
     }
   }

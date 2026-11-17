@@ -4,18 +4,21 @@
       "save": "保存",
       "saving": "保存中…",
       "cancel": "取消",
+      "edit": "编辑",
       "confirm": "确定",
       "close": "关闭",
       "retry": "重试",
       "back": "返回",
       "next": "下一步",
-      "submit": "提交"
+      "submit": "提交",
+      "sendCode": "发送验证码"
     },
     "loading": "加载中…",
     "email": "邮箱",
     "password": "密码",
     "newPassword": "新密码",
     "currentPassword": "当前密码",
+    "confirmPassword": "确认新密码",
     "code": "验证码",
     "codeSent": "验证码已发送",
     "codeExpires": "验证码 {{minutes}} 分钟内有效",
@@ -50,6 +53,7 @@
     "generic": "操作失败，请重试",
     "network": "网络异常，请检查连接后重试",
     "setupSecret": "密钥不正确",
+    "notFound": "页面不存在",
     "codes": {
       "INVALID_CREDENTIALS": "邮箱或密码不正确",
       "EMAIL_NOT_VERIFIED": "邮箱尚未验证",
@@ -60,6 +64,7 @@
       "TOO_MANY_ATTEMPTS": "尝试次数过多，请重新获取验证码",
       "RESEND_COOLDOWN": "发送过于频繁，请稍后再试",
       "RATE_LIMITED": "尝试过于频繁，请 {{seconds}} 秒后再试",
+      "CODE_COOLDOWN": "发送过于频繁，请 {{seconds}} 秒后再试",
       "EMAIL_NOT_CONFIGURED": "站点尚未配置邮件发送",
       "REGISTRATION_DISABLED": "本站未开放注册",
       "EMAIL_TAKEN": "该邮箱已被注册",
@@ -67,11 +72,18 @@
       "SETUP_UNAVAILABLE": "初始化功能不可用，请检查部署密钥配置",
       "PREFIX_CONFLICT": "数据库已在其他表前缀下初始化，已中止",
       "EMAIL_SEND_FAILED": "邮件发送失败",
+      "EMAIL_NOT_ENABLED": "邮箱验证码未开启",
+      "EMAIL_ALREADY_ENABLED": "邮箱验证码已开启",
+      "STEP_UP_REQUIRED": "登录已超时，请重新输入密码",
       "INVALID_EMAIL": "邮箱格式不正确",
       "INVALID_PASSWORD": "密码不符合要求",
       "UNAUTHORIZED": "请先登录",
       "FORBIDDEN": "没有权限执行该操作",
-      "PASSWORD_INCORRECT": "当前密码不正确"
+      "PASSWORD_INCORRECT": "当前密码不正确",
+      "DISPLAY_NAME_LOCKED": "昵称已被禁止修改",
+      "SELF_ACTION_FORBIDDEN": "不能对自己执行该操作",
+      "LAST_ADMIN": "至少保留一个可登录的管理员",
+      "USER_NOT_FOUND": "用户不存在"
     }
   },
   "home": {
@@ -86,6 +98,8 @@
       "totpSubmit": "验证",
       "passkey": "用 Passkey 登录",
       "passkeyFailed": "Passkey 验证未通过",
+      "email": "用邮箱验证码登录",
+      "emailSubmit": "验证",
       "forgot": "忘记密码？",
       "noAccount": "还没有账号？<signup>注册</signup>",
       "noMethods": "该账号没有可用的验证方式，请联系管理员。"
@@ -125,9 +139,14 @@
       "emailInvalid": "邮箱格式不正确",
       "passwordRequired": "请输入密码",
       "passwordTooShort": "密码至少 8 位",
+      "passwordMismatch": "两次输入的密码不一致",
       "codeRequired": "请输入验证码",
       "codeInvalid": "验证码为 6 位数字"
     }
+  },
+  "changePassword": {
+    "title": "修改密码",
+    "subtitle": "首次登录需要设置新密码"
   },
   "setup": {
     "title": "初始化",
@@ -149,7 +168,7 @@
     "ownerTitle": "创建所有者",
     "ownerSubtitle": "初始化完成后创建唯一的所有者账号。",
     "ownerSubmit": "创建所有者",
-    "displayName": "显示名称"
+    "displayName": "昵称"
   },
   "workbench": {
     "title": "工作台",
@@ -160,23 +179,19 @@
       "admin": "系统管理"
     },
     "menu": "菜单",
+    "account": "账号",
+    "sidebar": {
+      "collapse": "收起侧栏",
+      "expand": "展开侧栏",
+      "toggle": "切换侧栏"
+    },
     "logout": "退出登录"
   },
   "settings": {
     "title": "设置",
     "tabs": {
-      "profile": "个人资料",
       "security": "安全",
       "preferences": "偏好"
-    },
-    "profile": {
-      "title": "个人资料",
-      "displayName": "显示名称",
-      "email": "邮箱",
-      "emailVerified": "已验证",
-      "emailUnverified": "未验证",
-      "role": "角色",
-      "saved": "已保存"
     },
     "security": {
       "passwordTitle": "修改密码",
@@ -192,6 +207,12 @@
       "totpCode": "验证码",
       "totpConfirm": "确认开启",
       "totpDisabledToast": "两步验证已关闭",
+      "emailTitle": "邮箱验证码",
+      "emailEnabled": "已开启",
+      "emailDisabled": "未开启",
+      "emailConfirm": "确认开启",
+      "emailDisable": "关闭",
+      "emailDisabledToast": "邮箱验证码已关闭",
       "passkeyTitle": "Passkey",
       "passkeyAdd": "添加 Passkey",
       "passkeyEmpty": "尚未添加 Passkey",
@@ -205,10 +226,19 @@
     "preferences": {
       "language": "界面语言",
       "languageHint": "切换后立即生效，并保存到账号。",
-      "theme": "主题",
       "timezone": "时区",
       "saved": "偏好已保存"
     }
+  },
+
+  "profile": {
+    "title": "个人资料",
+    "displayName": "昵称",
+    "email": "邮箱",
+    "emailVerified": "已验证",
+    "emailUnverified": "未验证",
+    "role": "角色",
+    "saved": "已保存"
   },
   "about": {
     "title": "关于",
@@ -231,6 +261,12 @@
   },
   "admin": {
     "title": "系统管理",
+    "tabs": {
+      "email": "邮件配置",
+      "registration": "注册与审核",
+      "users": "用户管理",
+      "maintenance": "数据库维护"
+    },
     "email": {
       "title": "邮件配置",
       "provider": "发送通道",
@@ -257,6 +293,7 @@
       "smtpHint": "465 端口使用隐式 TLS，其余端口使用 STARTTLS。"
     },
     "registration": {
+      "lockDisplayName": "禁止修改用户昵称",
       "title": "注册与审核",
       "enabled": "开放注册",
       "approvalRequired": "注册需要管理员批准",
@@ -265,15 +302,52 @@
       "emailVerificationInactive": "邮件未配置，该开关暂不生效，新注册用户不会被要求验证邮箱。"
     },
     "users": {
-      "title": "待批准用户",
-      "empty": "没有待批准的用户",
+      "title": "全部用户",
+      "empty": "暂无用户",
       "approve": "批准",
       "reject": "拒绝",
       "approved": "已批准",
       "rejected": "已拒绝",
-      "requestedAt": "申请于 {{date}}",
+      "createdAt": "创建于 {{date}}",
       "displayName": "名称",
-      "actions": "操作"
+      "role": "角色",
+      "status": "状态",
+      "emailUnverified": "邮箱未验证",
+      "self": "我",
+      "actions": "操作",
+      "actionsFor": "{{email}} 的操作",
+      "reset": {
+        "title": "重置密码",
+        "password": "一次性密码"
+      },
+      "disable": "停用",
+      "enable": "启用",
+      "disabled": "已停用",
+      "enabled": "已启用",
+      "promote": "设为管理员",
+      "demote": "设为成员",
+      "roleChanged": "角色已更新",
+      "delete": {
+        "title": "删除用户",
+        "confirm": "删除",
+        "description": "将删除 {{email}}（{{name}}），此操作无法撤销。",
+        "done": "用户已删除"
+      },
+      "create": {
+        "title": "新建用户",
+        "email": "邮箱",
+        "role": "角色",
+        "displayName": "昵称（可选）",
+        "submit": "创建用户",
+        "creating": "创建中…",
+        "emailRequired": "请输入邮箱",
+        "createdTitle": "用户已创建",
+        "password": "初始密码",
+        "passwordOnce": "密码只显示这一次，关闭后无法再查看。",
+        "copy": "复制",
+        "copied": "已复制",
+        "copyFailed": "复制失败，请手动选中密码复制"
+      }
     },
     "maintenance": {
       "title": "数据库维护",

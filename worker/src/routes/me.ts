@@ -20,25 +20,14 @@ import { deletePasskey, listPasskeyViews } from "../db/queries/passkeys"
 import { findUserById, updateUserFields } from "../db/queries/users"
 import { currentUserId, requirePassword } from "../lib/account"
 import { apiError, readJsonBody } from "../lib/http"
+import { readProfileLockSettings } from "../lib/settings"
 import { getTablePrefix } from "../lib/table-prefix"
+import { isValidTimezone } from "../lib/timezone"
 import { buildUserView } from "../lib/user-view"
 import { normalizeLanguage } from "../locales/email"
 import type { HonoEnv } from "../types"
 
 export const meRoutes = new Hono<HonoEnv>()
-
-const THEMES = ["light", "dark", "system"]
-
-/** IANA 时区名：交给运行时的 Intl 判，别自己维护清单。 */
-function isValidTimezone(value: string): boolean {
-  if (value.length === 0 || value.length > 64) return false
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: value })
-    return true
-  } catch {
-    return false
-  }
-}
 
 type Ctx = Context<HonoEnv>
 
@@ -54,12 +43,18 @@ async function updateProfile(c: Ctx): Promise<Response> {
   const body = await readJsonBody<{
     displayName?: unknown
     language?: unknown
-    theme?: unknown
     timezone?: unknown
   }>(c)
   if (!body) return apiError(c, 400, "INVALID_REQUEST", "Invalid request body")
 
+  const prefix = getTablePrefix(c.env)
+  const userId = currentUserId(c)
+  const locks = await readProfileLockSettings(c.env)
   const patch: Parameters<typeof updateUserFields>[3] = {}
+
+  if (body.displayName !== undefined && locks.displayNameLocked) {
+    return apiError(c, 403, "DISPLAY_NAME_LOCKED", "Display name is locked")
+  }
 
   if (body.displayName !== undefined) {
     if (typeof body.displayName !== "string") {
@@ -76,13 +71,6 @@ async function updateProfile(c: Ctx): Promise<Response> {
     patch.language = language
   }
 
-  if (body.theme !== undefined) {
-    if (typeof body.theme !== "string" || !THEMES.includes(body.theme)) {
-      return apiError(c, 400, "INVALID_THEME", "Unsupported theme")
-    }
-    patch.theme = body.theme
-  }
-
   if (body.timezone !== undefined) {
     if (typeof body.timezone !== "string" || !isValidTimezone(body.timezone)) {
       return apiError(c, 400, "INVALID_TIMEZONE", "Invalid timezone")
@@ -90,8 +78,6 @@ async function updateProfile(c: Ctx): Promise<Response> {
     patch.timezone = body.timezone
   }
 
-  const prefix = getTablePrefix(c.env)
-  const userId = currentUserId(c)
   await updateUserFields(c.env.DB, prefix, userId, patch)
   const user = await findUserById(c.env.DB, prefix, userId)
   if (!user) return apiError(c, 404, "USER_NOT_FOUND", "User not found")
@@ -125,7 +111,8 @@ async function changePassword(c: Ctx): Promise<Response> {
   const prefix = getTablePrefix(c.env)
   const userId = currentUserId(c)
   await updateUserFields(c.env.DB, prefix, userId, {
-    password_hash: await hashPassword(newPassword)
+    password_hash: await hashPassword(newPassword),
+    must_change_password: 0
   })
   // 改密后其它会话立即失效，当前会话保留（规格 §5.6.2）。
   await revokeAllSessions(c.env.DB, prefix, userId, c.get("sessionId"))

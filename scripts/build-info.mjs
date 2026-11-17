@@ -7,7 +7,7 @@
  *
  * 版本号格式（技术方案 §5A.2）：
  *   v<semver>-<该标签之后的提交数>-<短哈希>   例：v1.3.0-8-479967d
- * 无 tag 时 v0.0.0-<提交数>-<短哈希> 兜底；完全没有 git 信息时 v0.0.0-0-unknown。
+ * 无 tag 时 v1.0.0-<提交数>-<短哈希> 兜底；完全没有 git 信息时 v1.0.0-0-unknown。
  * `git describe` 原始输出的第三段带 `g` 前缀，这里去掉。
  *
  * 何时跑：根与 web/worker 的 predev/prebuild/pretypecheck/pretest 钩子；
@@ -57,11 +57,11 @@ function resolveVersion() {
 
   const hash = shortHash()
   if (!hash) {
-    return { version: "v0.0.0-0-unknown", commit: "unknown", commitCount: 0 }
+    return { version: "v1.0.0-0-unknown", commit: "unknown", commitCount: 0 }
   }
   const count = commitCount()
   return {
-    version: `v0.0.0-${count}-${hash}`,
+    version: `v1.0.0-${count}-${hash}`,
     commit: hash,
     commitCount: count
   }

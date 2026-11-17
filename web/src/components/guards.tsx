@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Navigate, Outlet, useLocation } from "react-router"
 import { useAuthStore } from "@/stores/auth"
 import { useSetupStore } from "@/stores/setup"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { useSiteStore } from "@/stores/site"
 
 function LoadingScreen() {
@@ -31,7 +32,8 @@ export function RootGate() {
   const setupState = useSetupStore((state) => state.state)
   const siteLoaded = useSiteStore((state) => state.loaded)
   const authStatus = useAuthStore((state) => state.status)
-  const siteName = useSiteStore((state) => state.info?.name)
+  // 浏览器标签 title 跟随当前路由（页面名 · 站名），覆盖全部路由含 404。
+  usePageTitle()
   const [booted, setBooted] = useState(false)
 
   useEffect(() => {
@@ -47,11 +49,6 @@ export function RootGate() {
       cancelled = true
     }
   }, [])
-
-  // 页面标题跟随身份单点（index.html 的 <title> 只是首屏静态值）。
-  useEffect(() => {
-    if (siteName) document.title = siteName
-  }, [siteName])
 
   if (!booted || !siteLoaded || authStatus === "loading" || !setupState) {
     return <LoadingScreen />
@@ -74,6 +71,25 @@ export function RequireAuth() {
   const location = useLocation()
   if (!user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />
+  }
+  return <Outlet />
+}
+
+/**
+ * 首登改密门：管理员建号的账号带着 `mustChangePassword` 时，登录后的页面
+ * 一律先送回改密页；改密成功后标记清零，不再经过这里。
+ */
+export function RequirePasswordChanged() {
+  const user = useAuthStore((state) => state.user)
+  const location = useLocation()
+  if (user?.mustChangePassword) {
+    return (
+      <Navigate
+        to="/change-password"
+        state={{ from: location.pathname }}
+        replace
+      />
+    )
   }
   return <Outlet />
 }

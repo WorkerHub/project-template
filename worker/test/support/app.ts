@@ -9,12 +9,13 @@ import {
 } from "../../src/lib/tables"
 import { sha256Hex } from "../../src/core/auth"
 import { SESSION_COOKIE } from "../../src/core/session"
+import { PROJECT_NAME } from "../../src/config/project"
 import type { Env } from "../../src/types"
 import { SqliteD1 } from "./sqlite-d1"
 
 export const TEST_SETUP_SECRET = "test-setup-secret"
 export const TEST_SIGNING_SECRET = "signing-secret-for-unit-tests-only"
-export const TEST_APP_VERSION = "v0.0.0-7-abc1234"
+export const TEST_APP_VERSION = "v1.0.0-7-abc1234"
 
 /** 静态资源替身：只要 `/` 回 HTML，其余 404（触发 SPA 回落的前半段）。 */
 function assets(): Fetcher {
@@ -107,8 +108,8 @@ export async function seedSession(
   const user = db.db
     .prepare(
       `INSERT INTO ${usersTable(prefix)}
-        (email, password_hash, role, status, email_verified, language, display_name, timezone, theme, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, 'zh', '', 'Asia/Shanghai', 'system', ?, ?)`
+        (email, password_hash, role, status, email_verified, language, display_name, timezone, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, 'zh', '', 'Asia/Shanghai', ?, ?)`
     )
     .run(
       email,
@@ -370,7 +371,7 @@ export function configureResend(db: SqliteD1, prefix: string): void {
     JSON.stringify({
       api_key: "re_test_key",
       from: "noreply@example.test",
-      from_name: "Template"
+      from_name: PROJECT_NAME
     })
   )
 }

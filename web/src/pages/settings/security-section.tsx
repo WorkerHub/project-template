@@ -2,13 +2,16 @@ import { QRCodeSVG } from "qrcode.react"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+import { Field } from "@/components/form-field"
+import { PasswordChangeForm } from "@/components/password-change-form"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { useCooldown } from "@/hooks/use-cooldown"
 import { currentLanguage } from "@/i18n"
 import { authApi, meApi } from "@/lib/api"
-import { describeApiError } from "@/lib/api-errors"
+import { describeApiError, retryAfterSeconds } from "@/lib/api-errors"
 import type { PasskeySummary } from "@/lib/api-types"
 import { intlLocale } from "@/lib/language"
 import {
@@ -17,6 +20,7 @@ import {
   webauthnSupported
 } from "@/lib/webauthn"
 import { useAuthStore } from "@/stores/auth"
+import { useSiteStore } from "@/stores/site"
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(intlLocale(currentLanguage()))
@@ -30,12 +34,8 @@ export function SecuritySection() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.user)
   const refresh = useAuthStore((state) => state.refresh)
+  const info = useSiteStore((state) => state.info)
   const passkeySupported = webauthnSupported()
-
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [passwordBusy, setPasswordBusy] = useState(false)
-  const [passwordError, setPasswordError] = useState("")
 
   const [totpSetup, setTotpSetup] = useState<{
     secret: string
@@ -53,6 +53,16 @@ export function SecuritySection() {
   const [deleting, setDeleting] = useState<PasskeySummary | null>(null)
   const [deletePassword, setDeletePassword] = useState("")
 
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [emailCode, setEmailCode] = useState("")
+  const [emailPassword, setEmailPassword] = useState("")
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailError, setEmailError] = useState("")
+  const emailCooldown = useCooldown()
+
+  const emailConfigured = info?.emailConfigured === true
+  const emailEnabled = user?.emailTwoFactorEnabled === true
+
   const loadPasskeys = useCallback(async () => {
     try {
       const result = await meApi.passkeys()
@@ -66,23 +76,52 @@ export function SecuritySection() {
     if (passkeySupported) void loadPasskeys()
   }, [loadPasskeys, passkeySupported])
 
-  const changePassword = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (newPassword.length < 8) {
-      setPasswordError(t("auth.validation.passwordTooShort"))
-      return
-    }
-    setPasswordBusy(true)
-    setPasswordError("")
+  const startEmailEnableSend = async () => {
+    setEmailBusy(true)
+    setEmailError("")
     try {
-      await meApi.changePassword({ currentPassword, newPassword })
-      setCurrentPassword("")
-      setNewPassword("")
-      toast.success(t("settings.security.passwordChanged"))
+      await authApi.emailTwoFactorEnableSend()
+      setEmailCodeSent(true)
+      emailCooldown.start(60)
+      setEmailCode("")
     } catch (error) {
-      setPasswordError(describeApiError(t, error))
+      setEmailError(describeApiError(t, error))
+      const retry = retryAfterSeconds(error)
+      if (retry) emailCooldown.start(retry)
     } finally {
-      setPasswordBusy(false)
+      setEmailBusy(false)
+    }
+  }
+
+  const confirmEmailEnable = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setEmailBusy(true)
+    setEmailError("")
+    try {
+      await authApi.emailTwoFactorEnable(emailCode)
+      await refresh()
+      setEmailCodeSent(false)
+      setEmailCode("")
+    } catch (error) {
+      setEmailError(describeApiError(t, error))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
+  const disableEmailTwoFactor = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setEmailBusy(true)
+    setEmailError("")
+    try {
+      await authApi.emailTwoFactorDisable(emailPassword)
+      await refresh()
+      setEmailPassword("")
+      toast.success(t("settings.security.emailDisabledToast"))
+    } catch (error) {
+      setEmailError(describeApiError(t, error))
+    } finally {
+      setEmailBusy(false)
     }
   }
 
@@ -188,40 +227,7 @@ export function SecuritySection() {
         <h3 className="font-heading text-sm font-semibold">
           {t("settings.security.passwordTitle")}
         </h3>
-        <form className="space-y-3" onSubmit={changePassword}>
-          <div className="space-y-1.5">
-            <Label htmlFor="security-current-password">
-              {t("common.currentPassword")}
-            </Label>
-            <Input
-              id="security-current-password"
-              name="current-password"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="security-new-password">
-              {t("common.newPassword")}
-            </Label>
-            <Input
-              id="security-new-password"
-              name="new-password"
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-            />
-          </div>
-          {errorLine(passwordError)}
-          <Button type="submit" disabled={passwordBusy}>
-            {passwordBusy
-              ? t("common.actions.saving")
-              : t("settings.security.passwordSubmit")}
-          </Button>
-        </form>
+        <PasswordChangeForm idPrefix="security" />
       </section>
 
       <Separator />
@@ -308,6 +314,113 @@ export function SecuritySection() {
             </Button>
           </div>
         )}
+      </section>
+
+      <Separator />
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="font-heading text-sm font-semibold">
+            {t("settings.security.emailTitle")}
+          </h3>
+          <span className="text-xs text-muted-foreground">
+            {emailEnabled
+              ? t("settings.security.emailEnabled")
+              : emailConfigured
+                ? t("settings.security.emailDisabled")
+                : t("common.emailNotConfigured")}
+          </span>
+        </div>
+
+        {emailEnabled ? (
+          <form className="space-y-3" onSubmit={disableEmailTwoFactor}>
+            <div className="space-y-1.5">
+              <Label htmlFor="email-disable-password">
+                {t("common.currentPassword")}
+              </Label>
+              <Input
+                id="email-disable-password"
+                name="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={emailPassword}
+                onChange={(event) => setEmailPassword(event.target.value)}
+              />
+            </div>
+            {emailError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {emailError}
+              </p>
+            ) : null}
+            <Button type="submit" variant="outline" disabled={emailBusy}>
+              {t("settings.security.emailDisable")}
+            </Button>
+          </form>
+        ) : emailConfigured ? (
+          emailCodeSent ? (
+            <form className="space-y-3" onSubmit={confirmEmailEnable}>
+              <Field id="email-enable-code" label={t("common.code")}>
+                <Input
+                  id="email-enable-code"
+                  name="email-enable-code"
+                  type="text"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={emailCode}
+                  aria-invalid={Boolean(emailError)}
+                  onChange={(event) =>
+                    setEmailCode(
+                      event.target.value.replace(/\D/g, "").slice(0, 6)
+                    )
+                  }
+                />
+              </Field>
+
+              {emailError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {emailError}
+                </p>
+              ) : null}
+              <Button type="submit" disabled={emailBusy}>
+                {t("settings.security.emailConfirm")}
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={emailBusy || emailCooldown.running}
+                onClick={() => void startEmailEnableSend()}
+              >
+                {emailCooldown.running
+                  ? t("common.resendIn", {
+                      seconds: emailCooldown.seconds
+                    })
+                  : t("common.resend")}
+              </Button>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              {emailError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {emailError}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={emailBusy || emailCooldown.running}
+                onClick={() => void startEmailEnableSend()}
+              >
+                {emailCooldown.running
+                  ? t("common.resendIn", {
+                      seconds: emailCooldown.seconds
+                    })
+                  : t("common.actions.sendCode")}
+              </Button>
+            </div>
+          )
+        ) : null}
       </section>
 
       <Separator />

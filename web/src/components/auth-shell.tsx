@@ -5,7 +5,7 @@ import { buildInfo } from "@/lib/build-info"
 import { useSiteStore } from "@/stores/site"
 
 /**
- * 未登录页面的统一外壳：品牌、主题与语言切换、页脚版本号（技术方案 §5A.2）。
+ * 无导航页面的统一外壳：登录、注册、找回密码、首登强制改密。
  */
 export function AuthShell({
   title,

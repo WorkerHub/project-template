@@ -148,20 +148,26 @@ class SmtpSession {
     const date = new Date().toUTCString()
     const msgId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@worker>`
     const encodedSubject = `=?UTF-8?B?${encodeUtf8Base64(subject)}?=`
+    const boundary = text
+      ? `==worker_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      : undefined
+    const contentType = boundary
+      ? `Content-Type: multipart/alternative; boundary="${boundary}"`
+      : `Content-Type: text/html; charset=UTF-8`
+
     const headers =
       `From: ${fromName} <${from}>\r\n` +
       `To: ${to}\r\n` +
       `Subject: ${encodedSubject}\r\n` +
       `Date: ${date}\r\n` +
       `Message-ID: ${msgId}\r\n` +
-      `MIME-Version: 1.0\r\n`
+      `MIME-Version: 1.0\r\n` +
+      `${contentType}\r\n` +
+      (boundary ? `` : `Content-Transfer-Encoding: base64\r\n`)
 
     let body: string
-    if (text) {
-      const boundary = `==worker_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    if (text && boundary) {
       body =
-        `Content-Type: multipart/alternative; boundary="${boundary}"\r\n` +
-        `\r\n` +
         `--${boundary}\r\n` +
         `Content-Type: text/plain; charset=UTF-8\r\n` +
         `Content-Transfer-Encoding: base64\r\n` +
@@ -174,13 +180,8 @@ class SmtpSession {
         `${wrapBase64(encodeUtf8Base64(html))}\r\n` +
         `--${boundary}--\r\n`
     } else {
-      body =
-        `Content-Type: text/html; charset=UTF-8\r\n` +
-        `Content-Transfer-Encoding: base64\r\n` +
-        `\r\n` +
-        `${wrapBase64(encodeUtf8Base64(html))}\r\n`
+      body = `${wrapBase64(encodeUtf8Base64(html))}\r\n`
     }
-
     await this.writer.write(
       new TextEncoder().encode(`${headers}\r\n${body}.\r\n`)
     )

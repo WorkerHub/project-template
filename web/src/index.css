@@ -112,3 +112,17 @@
     @apply font-sans;
   }
 }
+
+/*
+ * 侧栏右缘拖动期间（AppShell 在 SidebarProvider 上打 data-resizing）：
+ * 关掉官方 200ms 的宽度过渡，否则拖动会跟在指针后面发飘；
+ * 同时禁用文本选择，免得拖过内容区时把正文选中。
+ */
+[data-resizing="true"] {
+  user-select: none;
+}
+
+[data-resizing="true"] [data-slot="sidebar-gap"],
+[data-resizing="true"] [data-slot="sidebar-container"] {
+  transition: none;
+}

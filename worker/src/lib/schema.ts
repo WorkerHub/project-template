@@ -28,27 +28,28 @@ export const SCHEMA_TABLES: SchemaTable[] = [
   {
     name: "users",
     ddl: `CREATE TABLE IF NOT EXISTS {table} (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  email          TEXT NOT NULL UNIQUE,
-  password_hash  TEXT NOT NULL,
-  role           TEXT NOT NULL DEFAULT 'user',
-  status         TEXT NOT NULL DEFAULT 'pending',
-  email_verified INTEGER NOT NULL DEFAULT 0,
-  language       TEXT NOT NULL DEFAULT 'zh',
-  display_name   TEXT NOT NULL DEFAULT '',
-  timezone       TEXT NOT NULL DEFAULT 'Asia/Shanghai',
-  theme          TEXT NOT NULL DEFAULT 'system',
-  created_at     TEXT NOT NULL,
-  updated_at     TEXT NOT NULL
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  email                TEXT NOT NULL UNIQUE,
+  password_hash        TEXT NOT NULL,
+  role                 TEXT NOT NULL DEFAULT 'user',
+  status               TEXT NOT NULL DEFAULT 'pending',
+  email_verified       INTEGER NOT NULL DEFAULT 0,
+  language             TEXT NOT NULL DEFAULT 'zh',
+  display_name         TEXT NOT NULL DEFAULT '',
+  timezone             TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0
 )`
   },
   {
     name: "user_2fa",
     ddl: `CREATE TABLE IF NOT EXISTS {table} (
-  user_id       INTEGER PRIMARY KEY,
-  totp_secret   TEXT,
-  totp_enabled  INTEGER NOT NULL DEFAULT 0,
-  updated_at    TEXT NOT NULL
+  user_id           INTEGER PRIMARY KEY,
+  totp_secret       TEXT,
+  totp_enabled      INTEGER NOT NULL DEFAULT 0,
+  updated_at        TEXT NOT NULL,
+  email_2fa_enabled INTEGER NOT NULL DEFAULT 0
 )`
   },
   {
@@ -82,7 +83,7 @@ export const SCHEMA_TABLES: SchemaTable[] = [
     ddl: `CREATE TABLE IF NOT EXISTS {table} (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   email      TEXT NOT NULL,
-  purpose    TEXT NOT NULL CHECK (purpose IN ('register_verify', 'password_reset')),
+  purpose    TEXT NOT NULL CHECK (purpose IN ('register_verify', 'password_reset', 'email_2fa')),
   code_hash  TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
   attempts   INTEGER NOT NULL DEFAULT 0,
@@ -157,7 +158,8 @@ export function baselineStatements(prefix: string): string[] {
 
 const SCHEMA_SQL_NOTICE = `-- 本文件由 worker/src/lib/schema.ts 生成，请勿手改。
 -- 重写命令：pnpm --filter ./worker schema:sql
--- 它是基线迁移 schema_v1 的逐字镜像，worker/test/schema-sql.test.ts 断言两者完全一致。
+-- 它是唯一基线迁移 schema_v1 的逐字镜像，worker/test/schema-sql.test.ts 断言两者完全一致。
+-- 历史增量迁移链已坍缩为单一 V1，全新建表即为最终形态。
 -- 语句之间用分号分隔，语句内部不得出现分号（迁移执行器按分号切分）。
 -- 表名/索引名里的 {prefix} 是占位符，执行时替换成生效的 TABLE_PREFIX。`
 

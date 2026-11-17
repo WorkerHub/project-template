@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest"
 import {
   buildInfo,
   buildTimeZoneLabel,
+  buildVersionLabel,
   formatBuildDate,
-  formatBuildTime
+  formatBuildTime,
+  versionSegments
 } from "@/lib/build-info"
 
 const repoRoot = path.resolve(process.cwd(), "..")
@@ -30,9 +32,9 @@ function expectedVersion(): string {
     if (matched) return `${matched[1]}-${matched[2]}-${matched[3]}`
   }
   const hash = git(["rev-parse", "--short", "HEAD"])
-  if (!hash) return "v0.0.0-0-unknown"
+  if (!hash) return "v1.0.0-0-unknown"
   const count = git(["rev-list", "--count", "HEAD"]) ?? "0"
-  return `v0.0.0-${count}-${hash}`
+  return `v1.0.0-${count}-${hash}`
 }
 
 describe("构建信息", () => {
@@ -51,5 +53,27 @@ describe("构建信息", () => {
     expect(formatBuildDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(formatBuildTime()).toMatch(/^\d{2}:\d{2}:\d{2}$/)
     expect(buildTimeZoneLabel()).toMatch(/^.+ \(UTC[+-]\d{2}:\d{2}\)$/)
+  })
+
+  it("版本号拆成截图三段式 semver/commitCount/commit", () => {
+    const segments = versionSegments()
+    expect(segments).not.toBeNull()
+    expect(segments!.semver).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(Number.isInteger(segments!.commitCount)).toBe(true)
+    expect(segments!.commit).toMatch(/^[0-9a-f]{7,}$|^unknown$/)
+    expect(
+      `${segments!.semver}-${segments!.commitCount}-${segments!.commit}`
+    ).toBe(buildInfo.version.replace(/^v/, ""))
+  })
+
+  it("版本标签带站名时是「站名 · semver · 短哈希+build.提交数」", () => {
+    const segments = versionSegments()
+    expect(segments).not.toBeNull()
+    expect(buildVersionLabel("Ciki")).toBe(
+      `Ciki · ${segments!.semver} · ${segments!.commit}+build.${segments!.commitCount}`
+    )
+    expect(buildVersionLabel()).toBe(
+      `${segments!.semver} · ${segments!.commit}+build.${segments!.commitCount}`
+    )
   })
 })

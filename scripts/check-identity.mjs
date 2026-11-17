@@ -23,7 +23,9 @@ const ALLOWED = new Set([
   "web/package.json",
   "worker/wrangler.toml",
   "web/index.html",
-  "README.md"
+  "README.md",
+  // 记录默认表前缀（slug 恰等于默认前缀时全仓扫描不误报，同 defaults.json 的注释）。
+  "worker/.dev.vars.example"
 ])
 
 /** 二进制文件不做文本扫描。 */
@@ -48,6 +50,11 @@ const problems = []
 
 function fail(message) {
   problems.push(message)
+}
+
+/** 把令牌转成能进正则的字面量（令牌本身不是正则，避免 . 等字符被当元字符）。 */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 function readConfigString(key) {
@@ -116,7 +123,15 @@ if (projectName && projectSlug) {
     .split("\n")
     .filter(Boolean)
 
+  // 全仓扫描按词边界匹配：展示名 / slug 常是常见英文片段，子串匹配会误报
+  // 更长单词里的同串、或 pnpm-lock 完整性哈希里的巧合片段。
+  // token 先正则转义，\b 只认 ASCII 单词字符，两端都要有边界才算命中。
   const tokens = [...new Set([projectName, projectSlug])]
+    .filter(Boolean)
+    .map((token) => ({
+      token,
+      pattern: new RegExp(`\\b${escapeRegExp(token)}\\b`)
+    }))
   for (const relative of tracked) {
     if (ALLOWED.has(relative)) continue
     if (BINARY_EXTENSIONS.has(path.extname(relative).toLowerCase())) continue
@@ -124,8 +139,8 @@ if (projectName && projectSlug) {
     if (content === null) continue
     const lines = content.split("\n")
     for (let index = 0; index < lines.length; index++) {
-      for (const token of tokens) {
-        if (token && lines[index].includes(token)) {
+      for (const { token, pattern } of tokens) {
+        if (pattern.test(lines[index])) {
           fail(
             `${relative}:${index + 1}: 出现项目身份令牌 "${token}"，请改用身份单点或删掉`
           )

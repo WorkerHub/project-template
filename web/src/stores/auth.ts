@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import { applyAccountPreferences } from "@/lib/account-prefs"
+import { applyAccountLanguage } from "@/i18n"
 import { authApi, meApi } from "@/lib/api"
 import type { Me } from "@/lib/api-types"
 
@@ -24,7 +24,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const user = await meApi.get()
       set({ user, status: "ready" })
-      await applyAccountPreferences(user)
+      await applyAccountLanguage(user.language)
       return user
     } catch {
       set({ user: null, status: "ready" })

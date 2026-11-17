@@ -19,7 +19,7 @@ import type { EmailSettingsView } from "../services/email"
 import type { Env } from "../types"
 
 /** 构建信息未注入时的兜底版本号：必须非空、且仍是 `git describe` 的形态。 */
-export const UNKNOWN_VERSION = "v0.0.0-0-unknown"
+export const UNKNOWN_VERSION = "v1.0.0-0-unknown"
 
 export interface RegistrationSettings {
   enabled: boolean
@@ -123,6 +123,33 @@ export async function writeRegistrationSettings(
   return { ok: true }
 }
 
+/** 个人资料修改锁（昵称，默认关闭）。 */
+export interface ProfileLockSettings {
+  displayNameLocked: boolean
+}
+
+export interface ProfileLockSettingsPatch {
+  displayNameLocked?: boolean
+}
+
+export async function readProfileLockSettings(
+  env: Env
+): Promise<ProfileLockSettings> {
+  return {
+    displayNameLocked: await getFlag(env, "profile_display_name_locked", false)
+  }
+}
+
+/** 写个人资料锁开关；缺省字段不动。两种应用模式均可用（与注册无关）。 */
+export async function writeProfileLockSettings(
+  env: Env,
+  patch: ProfileLockSettingsPatch
+): Promise<void> {
+  if (patch.displayNameLocked !== undefined) {
+    await setFlag(env, "profile_display_name_locked", patch.displayNameLocked)
+  }
+}
+
 /** 公开引导端点：只放公开、非敏感事实，一个请求够前端首屏用。 */
 export interface PublicBootstrap {
   name: string
@@ -152,6 +179,7 @@ export interface AdminSettings {
   appMode: typeof APP_MODE
   tablePrefix: string
   registration: RegistrationSettings | null
+  profileLocks: ProfileLockSettings
   setup: { pageEnabled: boolean }
   email: EmailSettingsView
 }
@@ -163,6 +191,7 @@ export async function buildAdminSettings(env: Env): Promise<AdminSettings> {
     tablePrefix: prefix,
     registration:
       APP_MODE === "multi" ? await readRegistrationSettings(env) : null,
+    profileLocks: await readProfileLockSettings(env),
     setup: { pageEnabled: await isSetupPageEnabled(env.DB, prefix) },
     email: await readEmailSettings(env)
   }

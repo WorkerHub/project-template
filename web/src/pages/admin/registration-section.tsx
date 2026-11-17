@@ -4,7 +4,11 @@ import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { adminApi } from "@/lib/api"
 import { describeApiError } from "@/lib/api-errors"
-import type { AdminSettings, RegistrationSettings } from "@/lib/api-types"
+import type {
+  AdminSettings,
+  AdminSettingsUpdate,
+  RegistrationSettings
+} from "@/lib/api-types"
 
 /**
  * 系统管理 · 注册与审核（规格 §5.6、§6.1）。
@@ -35,6 +39,22 @@ export function RegistrationSection({
       const updated = await adminApi.updateSettings({
         registration: { ...registration, ...patch }
       })
+      onSaved(updated)
+    } catch (saveError) {
+      setError(describeApiError(t, saveError))
+      toast.error(describeApiError(t, saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const updateLocks = async (
+    patch: Partial<NonNullable<AdminSettingsUpdate["profileLocks"]>>
+  ) => {
+    setBusy(true)
+    setError("")
+    try {
+      const updated = await adminApi.updateSettings({ profileLocks: patch })
       onSaved(updated)
     } catch (saveError) {
       setError(describeApiError(t, saveError))
@@ -89,6 +109,17 @@ export function RegistrationSection({
               : t("admin.registration.emailVerificationBlocked")}
           </p>
         ) : null}
+
+        <label className="flex items-center justify-between gap-4 text-sm">
+          <span>{t("admin.registration.lockDisplayName")}</span>
+          <Switch
+            checked={settings.profileLocks.displayNameLocked}
+            disabled={busy}
+            onCheckedChange={(checked) =>
+              void updateLocks({ displayNameLocked: checked })
+            }
+          />
+        </label>
 
         {error ? (
           <p role="alert" className="text-sm text-destructive">

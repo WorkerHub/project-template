@@ -7,10 +7,12 @@
  */
 import { describe, expect, it, vi } from "vitest"
 
+import { PROJECT_NAME } from "../src/config/project"
+
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async () => ({
     challenge: "register-challenge",
-    rp: { id: "worker.test", name: "Template" },
+    rp: { id: "worker.test", name: PROJECT_NAME },
     user: { id: "dXNlcg", name: "user", displayName: "user" },
     pubKeyCredParams: [],
     timeout: 60_000,
@@ -94,6 +96,11 @@ describe("通行密钥", () => {
     expect(raw).not.toContain("cred-1")
     expect(raw).not.toContain("publicKey")
 
+    const meBound = (await (
+      await request(env, "/api/me", { headers: { cookie } })
+    ).json()) as { passkeyCount: number }
+    expect(meBound.passkeyCount).toBe(1)
+
     // 密码步 → tempToken，方法里应有 passkey
     const passwordStep = await loginUser(env, { email: "owner@example.test" })
     const stepBody = (await passwordStep.json()) as {
@@ -117,6 +124,13 @@ describe("通行密钥", () => {
       { cookie: assertChallenge }
     )
     expect(verified.status).toBe(200)
+    const verifiedBody = (await verified.json()) as {
+      success: boolean
+      user: { email: string }
+    }
+    expect(verifiedBody.success).toBe(true)
+    expect(verifiedBody.user.email).toBe("owner@example.test")
+    expect("requires2fa" in verifiedBody).toBe(false)
     const session = cookieFrom(verified)
     expect(
       (await request(env, "/api/me", { headers: { cookie: session } })).status
@@ -133,6 +147,10 @@ describe("通行密钥", () => {
       headers: { cookie }
     })
     expect(((await empty.json()) as { items: unknown[] }).items).toEqual([])
+    const meCleared = (await (
+      await request(env, "/api/me", { headers: { cookie } })
+    ).json()) as { passkeyCount: number }
+    expect(meCleared.passkeyCount).toBe(0)
   })
 
   it("未知凭据被拒；删除需要正确密码", async () => {
