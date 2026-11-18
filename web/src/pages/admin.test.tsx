@@ -1,6 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router"
+import {
+  createMemoryRouter,
+  Navigate,
+  type RouteObject,
+  RouterProvider
+} from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/lib/api"
 import {
@@ -10,7 +15,10 @@ import {
   me,
   PROJECT_NAME
 } from "@/test/fixtures"
-import { AdminPage } from "@/pages/admin/admin-page"
+import { AdminPage, AdminUsersTab } from "@/pages/admin/admin-page"
+import { EmailSection } from "@/pages/admin/email-section"
+import { MaintenanceSection } from "@/pages/admin/maintenance-section"
+import { RegistrationSection } from "@/pages/admin/registration-section"
 import { useAuthStore } from "@/stores/auth"
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -39,12 +47,30 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 const { adminApi } = await import("@/lib/api")
 
-function renderAdmin() {
-  return render(
-    <MemoryRouter>
-      <AdminPage />
-    </MemoryRouter>
-  )
+const adminRoutes: RouteObject[] = [
+  {
+    path: "/admin",
+    element: <AdminPage />,
+    children: [
+      { index: true, element: <Navigate to="/admin/email" replace /> },
+      { path: "email", element: <EmailSection /> },
+      { path: "registration", element: <RegistrationSection /> },
+      { path: "users", element: <AdminUsersTab /> },
+      { path: "database", element: <MaintenanceSection /> },
+      {
+        path: "maintenance",
+        element: <Navigate to="/admin/database" replace />
+      },
+      { path: "*", element: <Navigate to="/admin/email" replace /> }
+    ]
+  }
+]
+
+function renderAdmin(initialPath = "/admin/email") {
+  const router = createMemoryRouter(adminRoutes, {
+    initialEntries: [initialPath]
+  })
+  return render(<RouterProvider router={router} />)
 }
 
 beforeEach(() => {
@@ -597,5 +623,131 @@ describe("用户管理操作列", () => {
     )
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     expect(adminApi.deleteUser).toHaveBeenCalledWith(2)
+  })
+
+  describe("Tab 独立路由与未保存拦截", () => {
+    it("支持四 tab URL 直达与未知子路径重定向", async () => {
+      vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
+
+      // 1. 直达 /admin/registration
+      const { unmount: unmount1 } = renderAdmin("/admin/registration")
+      expect(
+        await screen.findByRole("heading", { name: "注册与审核" })
+      ).toBeInTheDocument()
+      unmount1()
+
+      // 2. 直达 /admin/users
+      const { unmount: unmount2 } = renderAdmin("/admin/users")
+      expect(
+        await screen.findByRole("heading", { name: "新建用户" })
+      ).toBeInTheDocument()
+      unmount2()
+
+      // 3. 直达 /admin/database
+      const { unmount: unmount3 } = renderAdmin("/admin/database")
+      expect(
+        await screen.findByRole("heading", { name: "数据库维护" })
+      ).toBeInTheDocument()
+      unmount3()
+
+      // 4. 旧路径 /admin/maintenance 重定向至 /admin/database
+      const { unmount: unmountLegacy } = renderAdmin("/admin/maintenance")
+      expect(
+        await screen.findByRole("heading", { name: "数据库维护" })
+      ).toBeInTheDocument()
+      unmountLegacy()
+
+      // 4. 裸路径 /admin 自动重定向至首 tab /admin/email
+      const { unmount: unmount4 } = renderAdmin("/admin")
+      expect(
+        await screen.findByRole("heading", { name: "邮件配置" })
+      ).toBeInTheDocument()
+      unmount4()
+
+      // 5. 未知子路径 /admin/invalid 自动重定向至首 tab /admin/email
+      renderAdmin("/admin/invalid")
+      expect(
+        await screen.findByRole("heading", { name: "邮件配置" })
+      ).toBeInTheDocument()
+    })
+
+    it("邮件配置有未保存修改时，切换 Tab 触发拦截，可选择留在本页或放弃修改", async () => {
+      vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
+      const user = userEvent.setup()
+      renderAdmin("/admin/email")
+
+      const hostInput = await screen.findByLabelText("服务器")
+      await user.type(hostInput, "-changed")
+
+      // 尝试切换到「注册与审核」Tab
+      await user.click(screen.getByRole("tab", { name: "注册与审核" }))
+
+      // 弹出未保存修改对话框
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toHaveTextContent("未保存的修改")
+      expect(dialog).toHaveTextContent(
+        "当前有未保存的修改，离开将丢失内容，是否继续？"
+      )
+
+      // 点击「留在本页」
+      await user.click(within(dialog).getByRole("button", { name: "留在本页" }))
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      })
+      // 仍然留在邮件配置，且输入保留
+      expect(screen.getByLabelText("服务器")).toHaveValue(
+        "smtp.example.com-changed"
+      )
+      expect(
+        screen.queryByRole("heading", { name: "注册与审核" })
+      ).not.toBeInTheDocument()
+
+      // 再次尝试切换并点击「放弃修改」
+      await user.click(screen.getByRole("tab", { name: "注册与审核" }))
+      const discardDialog = await screen.findByRole("dialog")
+      await user.click(
+        within(discardDialog).getByRole("button", { name: "放弃修改" })
+      )
+
+      // 成功切到「注册与审核」
+      expect(
+        await screen.findByRole("heading", { name: "注册与审核" })
+      ).toBeInTheDocument()
+    })
+
+    it("新建用户表单有已填内容时切换 Tab 拦截，留存 vs 放弃正常工作", async () => {
+      vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
+      const user = userEvent.setup()
+      renderAdmin("/admin/users")
+
+      const emailInput = await screen.findByLabelText("邮箱")
+      await user.type(emailInput, "draft@example.com")
+
+      // 尝试切换到「邮件配置」Tab
+      await user.click(screen.getByRole("tab", { name: "邮件配置" }))
+
+      // 弹出未保存拦截弹窗
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toHaveTextContent("未保存的修改")
+
+      // 点击「留在本页」
+      await user.click(within(dialog).getByRole("button", { name: "留在本页" }))
+      expect(screen.getByLabelText("邮箱")).toHaveValue("draft@example.com")
+      expect(
+        screen.queryByRole("heading", { name: "邮件配置" })
+      ).not.toBeInTheDocument()
+
+      // 再次尝试切换并选择「放弃修改」
+      await user.click(screen.getByRole("tab", { name: "邮件配置" }))
+      const discardDialog = await screen.findByRole("dialog")
+      await user.click(
+        within(discardDialog).getByRole("button", { name: "放弃修改" })
+      )
+
+      // 成功切换至邮件配置
+      expect(
+        await screen.findByRole("heading", { name: "邮件配置" })
+      ).toBeInTheDocument()
+    })
   })
 })

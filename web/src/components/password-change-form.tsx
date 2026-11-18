@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard"
 import { meApi } from "@/lib/api"
 import { describeApiError } from "@/lib/api-errors"
 import { useAuthStore } from "@/stores/auth"
@@ -29,6 +30,8 @@ export function PasswordChangeForm({
   const [confirmPassword, setConfirmPassword] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+
+  const isDirty = Boolean(currentPassword || newPassword || confirmPassword)
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -62,6 +65,7 @@ export function PasswordChangeForm({
 
   return (
     <form className="space-y-3" onSubmit={submit}>
+      <UnsavedChangesGuard isDirty={isDirty} />
       <div className="space-y-1.5">
         <Label htmlFor={`${idPrefix}-current-password`}>
           {t("common.currentPassword")}

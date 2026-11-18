@@ -1,5 +1,6 @@
 import {
   createBrowserRouter,
+  Navigate,
   type RouteObject,
   RouterProvider
 } from "react-router"
@@ -14,7 +15,10 @@ import {
 } from "@/components/guards"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AboutPage } from "@/pages/about"
-import { AdminPage } from "@/pages/admin/admin-page"
+import { AdminPage, AdminUsersTab } from "@/pages/admin/admin-page"
+import { EmailSection } from "@/pages/admin/email-section"
+import { MaintenanceSection } from "@/pages/admin/maintenance-section"
+import { RegistrationSection } from "@/pages/admin/registration-section"
 import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
 import { LoginPage } from "@/pages/auth/login"
 import { RegisterPage } from "@/pages/auth/register"
@@ -23,6 +27,8 @@ import { HomePage } from "@/pages/home"
 import { NotFoundPage } from "@/pages/not-found"
 import { ProfilePage } from "@/pages/profile"
 import { SettingsPage } from "@/pages/settings"
+import { PreferencesSection } from "@/pages/settings/preferences-section"
+import { SecuritySection } from "@/pages/settings/security-section"
 import { SetupPage } from "@/pages/setup"
 import { WorkbenchPage } from "@/pages/workbench"
 
@@ -35,6 +41,7 @@ import { WorkbenchPage } from "@/pages/workbench"
  * - RequireAuth + /change-password：首登强制改密页，不入应用壳；
  * - RequirePasswordChanged + AppShell：带改密标记的账号先被送回改密页；
  * - RequireAdmin：系统管理再拦一层（接口 403 才是最终边界）。
+ * - /settings、/admin：已全面路径化为独立路径段子路由（不用 query 参数）。
  */
 export const routes: RouteObject[] = [
   {
@@ -62,11 +69,55 @@ export const routes: RouteObject[] = [
                 children: [
                   { path: "/workbench", element: <WorkbenchPage /> },
                   { path: "/profile", element: <ProfilePage /> },
-                  { path: "/settings", element: <SettingsPage /> },
+                  {
+                    path: "/settings",
+                    element: <SettingsPage />,
+                    children: [
+                      {
+                        index: true,
+                        element: <Navigate to="/settings/security" replace />
+                      },
+                      { path: "security", element: <SecuritySection /> },
+                      { path: "preferences", element: <PreferencesSection /> },
+                      {
+                        path: "*",
+                        element: <Navigate to="/settings/security" replace />
+                      }
+                    ]
+                  },
                   { path: "/about", element: <AboutPage /> },
                   {
                     element: <RequireAdmin />,
-                    children: [{ path: "/admin", element: <AdminPage /> }]
+                    children: [
+                      {
+                        path: "/admin",
+                        element: <AdminPage />,
+                        children: [
+                          {
+                            index: true,
+                            element: <Navigate to="/admin/email" replace />
+                          },
+                          { path: "email", element: <EmailSection /> },
+                          {
+                            path: "registration",
+                            element: <RegistrationSection />
+                          },
+                          { path: "users", element: <AdminUsersTab /> },
+                          {
+                            path: "database",
+                            element: <MaintenanceSection />
+                          },
+                          {
+                            path: "maintenance",
+                            element: <Navigate to="/admin/database" replace />
+                          },
+                          {
+                            path: "*",
+                            element: <Navigate to="/admin/email" replace />
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               }

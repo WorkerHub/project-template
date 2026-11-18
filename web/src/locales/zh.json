@@ -47,7 +47,13 @@
     "emailNotConfigured": "邮件未配置",
     "resendIn": "{{seconds}} 秒后可重发",
     "resend": "重新发送",
-    "home": "首页"
+    "home": "首页",
+    "unsavedChanges": {
+      "title": "未保存的修改",
+      "description": "当前有未保存的修改，离开将丢失内容，是否继续？",
+      "stay": "留在本页",
+      "discard": "放弃修改"
+    }
   },
   "errors": {
     "generic": "操作失败，请重试",
@@ -198,7 +204,7 @@
       "passwordSubmit": "更新密码",
       "passwordChanged": "密码已更新",
       "totpTitle": "两步验证",
-      "totpApp": "验证器应用",
+      "totpItemTitle": "验证器应用",
       "totpEnabled": "已开启",
       "totpDisabled": "未开启",
       "totpEnable": "开启",
@@ -225,8 +231,8 @@
       "passkeyDeleted": "Passkey 已删除",
       "passkeyUnsupported": "当前浏览器不支持 Passkey",
       "passkeyAdded": "Passkey 已添加",
-      "confirmPasswordTitle": "安全验证",
-      "confirmPasswordDescription": "请输入当前密码以确认操作。"
+      "verifyPasswordTitle": "安全验证",
+      "verifyPasswordDescription": "请输入当前密码以确认此操作。"
     },
     "preferences": {
       "language": "界面语言",

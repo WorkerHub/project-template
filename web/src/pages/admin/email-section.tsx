@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useOutletContext } from "react-router"
 import { toast } from "sonner"
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,30 +27,34 @@ const PROVIDERS: EmailProvider[] = ["none", "smtp", "resend"]
  * 凭据回显只给「已设置/未设置」布尔值；保存时留空表示不改。
  * 测试邮件的 provider 原始错误放等宽块直出（诊断用，不进 i18n）。
  */
-export function EmailSection({
-  settings,
-  onSaved
-}: {
-  settings: AdminSettings
-  onSaved: (settings: AdminSettings) => void
+export function EmailSection(props?: {
+  settings?: AdminSettings
+  onSaved?: (settings: AdminSettings) => void
 }) {
   const { t } = useTranslation()
+  const outlet = useOutletContext<{
+    settings: AdminSettings
+    onSaved: (settings: AdminSettings) => void
+  } | null>()
+  const settings = props?.settings ?? outlet?.settings
+  const onSaved = props?.onSaved ?? outlet?.onSaved ?? (() => {})
+
   const adminEmail = useAuthStore((state) => state.user?.email ?? "")
 
   const [provider, setProvider] = useState<EmailProvider>(
-    settings.email.provider
+    settings?.email.provider ?? "none"
   )
   const [smtp, setSmtp] = useState({
-    host: settings.email.smtp.host,
-    port: String(settings.email.smtp.port ?? ""),
-    username: settings.email.smtp.username,
-    from: settings.email.smtp.from,
-    fromName: settings.email.smtp.fromName
+    host: settings?.email.smtp.host ?? "",
+    port: String(settings?.email.smtp.port ?? ""),
+    username: settings?.email.smtp.username ?? "",
+    from: settings?.email.smtp.from ?? "",
+    fromName: settings?.email.smtp.fromName ?? ""
   })
   const [smtpPassword, setSmtpPassword] = useState("")
   const [resend, setResend] = useState({
-    from: settings.email.resend.from,
-    fromName: settings.email.resend.fromName
+    from: settings?.email.resend.from ?? "",
+    fromName: settings?.email.resend.fromName ?? ""
   })
   const [resendKey, setResendKey] = useState("")
 
@@ -60,6 +66,7 @@ export function EmailSection({
   const [testError, setTestError] = useState("")
 
   useEffect(() => {
+    if (!settings) return
     setProvider(settings.email.provider)
     setSmtp({
       host: settings.email.smtp.host,
@@ -123,8 +130,23 @@ export function EmailSection({
       </p>
     ) : null
 
+  if (!settings) return null
+
+  const isDirty =
+    provider !== settings.email.provider ||
+    smtp.host !== settings.email.smtp.host ||
+    smtp.port !== String(settings.email.smtp.port ?? "") ||
+    smtp.username !== settings.email.smtp.username ||
+    smtp.from !== settings.email.smtp.from ||
+    smtp.fromName !== settings.email.smtp.fromName ||
+    smtpPassword !== "" ||
+    resend.from !== settings.email.resend.from ||
+    resend.fromName !== settings.email.resend.fromName ||
+    resendKey !== ""
+
   return (
     <section className="space-y-4 rounded-xl border bg-card p-4">
+      <UnsavedChangesGuard isDirty={isDirty} />
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-heading text-sm font-semibold">
           {t("admin.email.title")}

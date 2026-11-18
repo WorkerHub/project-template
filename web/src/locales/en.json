@@ -47,7 +47,13 @@
     "emailNotConfigured": "Email not configured",
     "resendIn": "Resend in {{seconds}}s",
     "resend": "Resend",
-    "home": "Home"
+    "home": "Home",
+    "unsavedChanges": {
+      "title": "Unsaved changes",
+      "description": "Current form has unsaved changes. Leaving will discard them. Do you want to continue?",
+      "stay": "Stay on page",
+      "discard": "Discard changes"
+    }
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
@@ -198,7 +204,7 @@
       "passwordSubmit": "Update password",
       "passwordChanged": "Password updated",
       "totpTitle": "Two-factor authentication",
-      "totpApp": "Authenticator app",
+      "totpItemTitle": "Authenticator app",
       "totpEnabled": "Enabled",
       "totpDisabled": "Disabled",
       "totpEnable": "Enable",
@@ -225,8 +231,8 @@
       "passkeyDeleted": "Passkey removed",
       "passkeyUnsupported": "This browser does not support passkeys",
       "passkeyAdded": "Passkey added",
-      "confirmPasswordTitle": "Security verification",
-      "confirmPasswordDescription": "Enter your current password to proceed."
+      "verifyPasswordTitle": "Security verification",
+      "verifyPasswordDescription": "Please enter your current password to confirm this action."
     },
     "preferences": {
       "language": "Interface language",

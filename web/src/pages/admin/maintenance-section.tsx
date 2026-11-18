@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useOutletContext } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { adminApi } from "@/lib/api"
@@ -12,17 +13,23 @@ import type { AdminSettings, SetupResult } from "@/lib/api-types"
  * 与初始化页调同一个迁移 runner，回显形状一致；管理员会话即凭证，不再要密钥。
  * 「开放初始化页面」只门控页面，不门控密钥接口。
  */
-export function MaintenanceSection({
-  settings,
-  onSaved
-}: {
-  settings: AdminSettings
-  onSaved: (settings: AdminSettings) => void
+export function MaintenanceSection(props?: {
+  settings?: AdminSettings
+  onSaved?: (settings: AdminSettings) => void
 }) {
   const { t } = useTranslation()
+  const outlet = useOutletContext<{
+    settings: AdminSettings
+    onSaved: (settings: AdminSettings) => void
+  } | null>()
+  const settings = props?.settings ?? outlet?.settings
+  const onSaved = props?.onSaved ?? outlet?.onSaved ?? (() => {})
+
   const [result, setResult] = useState<SetupResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+
+  if (!settings) return null
 
   const run = async () => {
     setBusy(true)
