@@ -198,6 +198,7 @@
       "passwordSubmit": "Update password",
       "passwordChanged": "Password updated",
       "totpTitle": "Two-factor authentication",
+      "totpApp": "Authenticator app",
       "totpEnabled": "Enabled",
       "totpDisabled": "Disabled",
       "totpEnable": "Enable",
@@ -210,6 +211,7 @@
       "emailTitle": "Email code",
       "emailEnabled": "Enabled",
       "emailDisabled": "Disabled",
+      "emailEnable": "Enable",
       "emailConfirm": "Confirm",
       "emailDisable": "Disable",
       "emailDisabledToast": "Email code verification disabled",
@@ -218,10 +220,13 @@
       "passkeyEmpty": "No passkeys yet",
       "passkeyCreatedAt": "Added {{date}}",
       "passkeyLastUsed": "Last used {{date}}",
+      "passkeyNeverUsed": "Never used",
       "passkeyDelete": "Remove",
       "passkeyDeleted": "Passkey removed",
       "passkeyUnsupported": "This browser does not support passkeys",
-      "passkeyAdded": "Passkey added"
+      "passkeyAdded": "Passkey added",
+      "confirmPasswordTitle": "Security verification",
+      "confirmPasswordDescription": "Enter your current password to proceed."
     },
     "preferences": {
       "language": "Interface language",
