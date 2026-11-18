@@ -18,7 +18,6 @@ import {
 } from "react"
 import { useTranslation } from "react-i18next"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router"
-import { LanguageCycleButton } from "@/components/language-toggle"
 import { SiteLogo } from "@/components/site-logo"
 import { ThemeCycleButton } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -337,7 +336,6 @@ export function AppShell() {
           </h1>
 
           <div className="ml-auto flex items-center gap-1">
-            <LanguageCycleButton />
             <ThemeCycleButton />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

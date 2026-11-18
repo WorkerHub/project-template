@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { SettingsPage } from "@/pages/settings"
+import { changeLanguage } from "@/i18n"
 import { useAuthStore } from "@/stores/auth"
 import { useSiteStore } from "@/stores/site"
 import { me, publicInfo } from "@/test/fixtures"
@@ -38,23 +39,85 @@ function renderSettings() {
 
 beforeEach(async () => {
   useAuthStore.setState({ user: me(), status: "ready" })
-  vi.mocked(meApi.update).mockResolvedValue(me({ language: "en" }))
+  vi.mocked(meApi.update).mockImplementation(async (input) => me(input))
   vi.mocked(meApi.changePassword).mockResolvedValue({ success: true })
   vi.mocked(meApi.passkeys).mockResolvedValue({ items: [] })
+  await changeLanguage("zh")
 })
 
 describe("设置页", () => {
-  it("切换语言即时生效并写回账号", async () => {
+  it("偏好设置无改动时保存按钮禁用", async () => {
     const user = userEvent.setup()
     renderSettings()
 
     await user.click(screen.getByRole("tab", { name: /偏好|preferences/i }))
-    await user.click(screen.getByRole("radio", { name: "English" }))
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled()
+  })
+
+  it("偏好设置语言先选后存：未保存不写回，保存后统一写回并即时生效", async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(screen.getByRole("tab", { name: /偏好|preferences/i }))
+    const saveButton = screen.getByRole("button", { name: "保存" })
+    expect(saveButton).toBeDisabled()
+
+    await user.click(screen.getByRole("combobox", { name: "界面语言" }))
+    await user.click(await screen.findByRole("option", { name: "English" }))
+
+    expect(saveButton).not.toBeDisabled()
+    expect(meApi.update).not.toHaveBeenCalled()
+    expect(document.documentElement.lang).toBe("zh")
+
+    await user.click(saveButton)
 
     await waitFor(() =>
-      expect(meApi.update).toHaveBeenCalledWith({ language: "en" })
+      expect(meApi.update).toHaveBeenCalledWith({
+        language: "en",
+        timezone: "Asia/Shanghai"
+      })
     )
     expect(document.documentElement.lang).toBe("en")
+    expect(saveButton).toBeDisabled()
+  })
+
+  it("偏好设置保存失败时展示错误提示且语言不生效", async () => {
+    vi.mocked(meApi.update).mockRejectedValueOnce(new Error("网络异常"))
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(screen.getByRole("tab", { name: /偏好|preferences/i }))
+    await user.click(screen.getByRole("combobox", { name: "界面语言" }))
+    await user.click(await screen.findByRole("option", { name: "English" }))
+
+    await user.click(screen.getByRole("button", { name: "保存" }))
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument())
+    expect(document.documentElement.lang).toBe("zh")
+  })
+
+  it("偏好设置时区先选后存：修改时区后统一提交", async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(screen.getByRole("tab", { name: /偏好|preferences/i }))
+    const saveButton = screen.getByRole("button", { name: "保存" })
+    expect(saveButton).toBeDisabled()
+
+    await user.click(screen.getByRole("combobox", { name: "时区" }))
+    await user.click(
+      await screen.findByRole("option", { name: "America/New_York" })
+    )
+
+    expect(saveButton).not.toBeDisabled()
+    await user.click(saveButton)
+
+    await waitFor(() =>
+      expect(meApi.update).toHaveBeenCalledWith({
+        language: "zh",
+        timezone: "America/New_York"
+      })
+    )
   })
 
   it("时区下拉只列常用时区", async () => {
