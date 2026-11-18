@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { LanguageSegmented } from "@/components/language-toggle"
+import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -10,8 +10,15 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { applyAccountLanguage } from "@/i18n"
 import { meApi } from "@/lib/api"
 import { describeApiError } from "@/lib/api-errors"
+import {
+  DEFAULT_LANGUAGE,
+  isLanguage,
+  type Language,
+  SUPPORTED_LANGUAGES
+} from "@/lib/language"
 import { useAuthStore } from "@/stores/auth"
 
 /**
@@ -64,56 +71,94 @@ const COMMON_TIME_ZONES: string[] = [
 ]
 
 /**
- * 设置 · 偏好：语言与时区。
+ * 设置 · 偏好：语言与时区（先选后存）。
  *
- * 语言与时区立即生效并写回账号（`PUT /api/me`）。
+ * 语言与时区本地选择后统一通过「保存」写回账号（`PUT /api/me`）。
  */
 export function PreferencesSection() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.user)
   const setUser = useAuthStore((state) => state.setUser)
+
+  const userLanguage: Language = isLanguage(user?.language)
+    ? user.language
+    : DEFAULT_LANGUAGE
+  const userTimezone = user?.timezone ?? ""
+
+  const [language, setLanguage] = useState<Language>(userLanguage)
+  const [timezone, setTimezone] = useState<string>(userTimezone)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
-  const zones = useMemo(() => {
-    if (!user?.timezone) return COMMON_TIME_ZONES
-    return COMMON_TIME_ZONES.includes(user.timezone)
-      ? COMMON_TIME_ZONES
-      : [user.timezone, ...COMMON_TIME_ZONES]
-  }, [user?.timezone])
+  useEffect(() => {
+    if (user?.language && isLanguage(user.language)) {
+      setLanguage(user.language)
+    }
+    if (user?.timezone !== undefined) {
+      setTimezone(user.timezone)
+    }
+  }, [user?.language, user?.timezone])
 
-  const persist = async (
-    input: Parameters<typeof meApi.update>[0]
-  ): Promise<void> => {
+  const zones = useMemo(() => {
+    const customZone = timezone || user?.timezone
+    if (!customZone || COMMON_TIME_ZONES.includes(customZone)) {
+      return COMMON_TIME_ZONES
+    }
+    return [customZone, ...COMMON_TIME_ZONES]
+  }, [timezone, user?.timezone])
+
+  const dirty = language !== userLanguage || timezone !== userTimezone
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!dirty || busy) return
+
+    setBusy(true)
     setError("")
     try {
-      const updated = await meApi.update(input)
+      const updated = await meApi.update({ language, timezone })
       setUser(updated)
+      if (updated.language) {
+        await applyAccountLanguage(updated.language)
+      }
       toast.success(t("settings.preferences.saved"))
     } catch (saveError) {
       setError(describeApiError(t, saveError))
+    } finally {
+      setBusy(false)
     }
   }
 
   return (
-    <div className="space-y-8">
+    <form className="space-y-8" onSubmit={handleSubmit}>
       <div className="space-y-2">
-        <Label>{t("settings.preferences.language")}</Label>
-        <LanguageSegmented
-          onChange={(language) => void persist({ language })}
-        />
-        <p className="text-xs text-muted-foreground">
-          {t("settings.preferences.languageHint")}
-        </p>
+        <Label htmlFor="preferences-language">
+          {t("settings.preferences.language")}
+        </Label>
+        <Select
+          value={language}
+          onValueChange={(value) => {
+            if (isLanguage(value)) setLanguage(value)
+          }}
+        >
+          <SelectTrigger id="preferences-language" className="w-full sm:w-80">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <SelectItem key={lang} value={lang}>
+                {t(`common.languages.${lang}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="preferences-timezone">
           {t("settings.preferences.timezone")}
         </Label>
-        <Select
-          value={user?.timezone ?? ""}
-          onValueChange={(timezone) => void persist({ timezone })}
-        >
+        <Select value={timezone} onValueChange={setTimezone}>
           <SelectTrigger id="preferences-timezone" className="w-full sm:w-80">
             <SelectValue />
           </SelectTrigger>
@@ -132,6 +177,12 @@ export function PreferencesSection() {
           {error}
         </p>
       ) : null}
-    </div>
+
+      <div>
+        <Button type="submit" disabled={!dirty || busy}>
+          {busy ? t("common.actions.saving") : t("common.actions.save")}
+        </Button>
+      </div>
+    </form>
   )
 }

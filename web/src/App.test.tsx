@@ -159,6 +159,28 @@ describe("路由与根门", () => {
     )
   })
 
+  it("登录态顶栏不渲染语言切换按钮，未登录页顶栏保留", async () => {
+    vi.mocked(setupApi.state).mockResolvedValue(
+      setupState({ ownerExists: true, enabled: false })
+    )
+    vi.mocked(meApi.get).mockResolvedValue(me())
+
+    const view = renderAt(routes, "/workbench")
+    await screen.findByRole("navigation")
+    expect(
+      screen.queryByRole("button", { name: /切换语言/i })
+    ).not.toBeInTheDocument()
+    view.unmount()
+
+    vi.mocked(meApi.get).mockRejectedValue(
+      new ApiError({ status: 401, message: "Unauthorized" })
+    )
+    renderAt(routes, "/login")
+    expect(
+      await screen.findByRole("button", { name: /切换语言/i })
+    ).toBeInTheDocument()
+  })
+
   it("账号菜单里的个人资料跳到独立页", async () => {
     vi.mocked(setupApi.state).mockResolvedValue(
       setupState({ ownerExists: true, enabled: false })
