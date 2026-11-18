@@ -236,7 +236,10 @@ export function SecuritySection() {
         <h3 className="font-heading text-sm font-semibold">
           {t("settings.security.passwordTitle")}
         </h3>
-        <PasswordChangeForm idPrefix="security" />
+        <PasswordChangeForm
+          idPrefix="security"
+          inputClassName="w-full sm:w-80"
+        />
       </section>
 
       <Separator />
@@ -272,13 +275,15 @@ export function SecuritySection() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={totpBusy}
+                  disabled={totpBusy || totpSetup !== null}
                   onClick={() => void startTotp()}
                 >
                   {t("settings.security.totpEnable")}
                 </Button>
               )}
             </div>
+
+            {errorLine(totpError)}
 
             {!user?.totpEnabled && totpSetup ? (
               <form className="space-y-3 border-t pt-2" onSubmit={confirmTotp}>
@@ -315,7 +320,6 @@ export function SecuritySection() {
                     }
                   />
                 </div>
-                {errorLine(totpError)}
                 <div className="flex gap-2">
                   <Button type="submit" disabled={totpBusy}>
                     {t("settings.security.totpConfirm")}
@@ -363,13 +367,17 @@ export function SecuritySection() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={emailBusy || emailCooldown.running}
+                  disabled={emailBusy || emailCooldown.running || emailCodeSent}
                   onClick={() => void startEmailEnableSend()}
                 >
-                  {t("settings.security.emailEnable")}
+                  {emailCooldown.running
+                    ? t("common.resendIn", { seconds: emailCooldown.seconds })
+                    : t("settings.security.emailEnable")}
                 </Button>
               ) : null}
             </div>
+
+            {errorLine(emailError)}
 
             {!emailEnabled && emailConfigured && emailCodeSent ? (
               <form
@@ -395,12 +403,6 @@ export function SecuritySection() {
                     }
                   />
                 </div>
-
-                {emailError ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {emailError}
-                  </p>
-                ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="submit" disabled={emailBusy}>
                     {t("settings.security.emailConfirm")}
@@ -545,7 +547,7 @@ export function SecuritySection() {
               </p>
             ) : null}
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter>
               <Button
                 type="button"
                 variant="outline"

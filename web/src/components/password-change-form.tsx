@@ -17,7 +17,7 @@ import { useAuthStore } from "@/stores/auth"
 export function PasswordChangeForm({
   idPrefix,
   onChanged,
-  inputClassName = "w-full sm:w-80"
+  inputClassName
 }: {
   idPrefix: string
   onChanged?: () => void

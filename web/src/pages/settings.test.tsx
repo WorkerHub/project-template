@@ -307,6 +307,73 @@ describe("设置页", () => {
 
       expect(authApi.emailTwoFactorEnable).toHaveBeenCalledWith("123456")
     })
+
+    it("开启验证器应用失败时错误可见且不展开扫码", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: false }),
+        status: "ready"
+      })
+      vi.mocked(authApi.totpSetup).mockRejectedValueOnce(
+        new ApiError({
+          status: 400,
+          message: "Generic error",
+          code: "FORBIDDEN"
+        })
+      )
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[0])
+
+      expect(authApi.totpSetup).toHaveBeenCalledTimes(1)
+      expect(await withinSection.findByRole("alert")).toBeInTheDocument()
+      expect(withinSection.queryByLabelText("验证码")).not.toBeInTheDocument()
+    })
+
+    it("发送邮箱验证码失败时错误可见且冷却倒计时正常触发", async () => {
+      useAuthStore.setState({
+        user: me({ emailTwoFactorEnabled: false }),
+        status: "ready"
+      })
+      vi.mocked(authApi.emailTwoFactorEnableSend).mockRejectedValueOnce(
+        new ApiError({
+          status: 429,
+          message: "Rate limited",
+          code: "RATE_LIMITED",
+          retryAfter: 30
+        })
+      )
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[1])
+
+      expect(authApi.emailTwoFactorEnableSend).toHaveBeenCalledTimes(1)
+      expect(await withinSection.findByRole("alert")).toBeInTheDocument()
+      expect(withinSection.queryByLabelText("验证码")).not.toBeInTheDocument()
+      // 检查按钮显示倒计时
+      expect(
+        withinSection.getByRole("button", { name: /30 秒后可重发/i })
+      ).toBeDisabled()
+    })
   })
 
   describe("敏感操作密码确认弹窗流", () => {
@@ -327,12 +394,8 @@ describe("设置页", () => {
       const user = userEvent.setup()
       renderSettings()
 
-      // 验证页面上没有常驻的密码框
-      expect(
-        screen.queryByLabelText("当前密码", {
-          selector: "#confirm-action-password"
-        })
-      ).not.toBeInTheDocument()
+      // 验证页面上没有常驻的敏感操作密码框（全文仅修改密码表单本身持有 1 个当前密码输入框）
+      expect(screen.getAllByLabelText("当前密码")).toHaveLength(1)
 
       const twoFactorSection = screen
         .getByRole("heading", { name: "两步验证" })
