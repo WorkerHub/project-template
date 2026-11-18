@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { SettingsPage } from "@/pages/settings"
 import { changeLanguage } from "@/i18n"
+import { SettingsPage } from "@/pages/settings"
 import { useAuthStore } from "@/stores/auth"
 import { useSiteStore } from "@/stores/site"
 import { me, publicInfo } from "@/test/fixtures"
@@ -26,12 +26,24 @@ vi.mock("@/lib/api", async (importOriginal) => {
       totpDisable: vi.fn(),
       emailTwoFactorEnableSend: vi.fn(),
       emailTwoFactorEnable: vi.fn(),
-      emailTwoFactorDisable: vi.fn()
+      emailTwoFactorDisable: vi.fn(),
+      passkeyRegisterOptions: vi.fn(),
+      passkeyRegisterVerify: vi.fn()
     }
   }
 })
 
-const { meApi, authApi } = await import("@/lib/api")
+vi.mock("@/lib/webauthn", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/webauthn")>()
+  return {
+    ...actual,
+    webauthnSupported: vi.fn(() => true),
+    registrationCredential: vi.fn(async () => ({}) as never)
+  }
+})
+
+const { ApiError, meApi, authApi } = await import("@/lib/api")
+const { webauthnSupported } = await import("@/lib/webauthn")
 
 function renderSettings() {
   return render(<SettingsPage />)
@@ -39,9 +51,14 @@ function renderSettings() {
 
 beforeEach(async () => {
   useAuthStore.setState({ user: me(), status: "ready" })
+  useSiteStore.setState({
+    info: publicInfo({ emailConfigured: true }),
+    loaded: true
+  })
   vi.mocked(meApi.update).mockImplementation(async (input) => me(input))
   vi.mocked(meApi.changePassword).mockResolvedValue({ success: true })
   vi.mocked(meApi.passkeys).mockResolvedValue({ items: [] })
+  vi.mocked(webauthnSupported).mockReturnValue(true)
   await changeLanguage("zh")
 })
 
@@ -178,33 +195,89 @@ describe("设置页", () => {
     )
   })
 
-  describe("邮箱验证码 2FA 设置", () => {
-    it("未配邮件时不渲染启用控件，仅显示未配置", () => {
+  describe("两步验证合并区（验证器应用 + 邮箱验证码）", () => {
+    it("合并展示两行状态与动作：未开启状态均显示未开启与开启按钮", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: false, emailTwoFactorEnabled: false }),
+        status: "ready"
+      })
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      expect(twoFactorSection).toBeInTheDocument()
+
+      const withinSection = within(twoFactorSection!)
+      expect(withinSection.getByText("验证器应用")).toBeInTheDocument()
+      expect(withinSection.getByText("邮箱验证码")).toBeInTheDocument()
+
+      const disabledTexts = withinSection.getAllByText("未开启")
+      expect(disabledTexts).toHaveLength(2)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      expect(enableButtons).toHaveLength(2)
+    })
+
+    it("未配邮件时不渲染邮箱启用控件，显示邮件未配置", () => {
       useSiteStore.setState({
         info: publicInfo({ emailConfigured: false }),
         loaded: true
       })
       useAuthStore.setState({
-        user: me({ emailTwoFactorEnabled: false }),
+        user: me({ totpEnabled: false, emailTwoFactorEnabled: false }),
         status: "ready"
       })
       renderSettings()
 
-      expect(screen.getByText(/邮件未配置|Not configured/i)).toBeInTheDocument()
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+      expect(withinSection.getByText("邮件未配置")).toBeInTheDocument()
       expect(
-        screen.queryByRole("button", {
-          name: /发送验证码|Send code|common.sendCode/i
-        })
-      ).not.toBeInTheDocument()
+        withinSection.queryByRole("button", { name: "开启" })
+      ).toBeInTheDocument() // 仅验证器应用的开启按钮
     })
 
-    it("已配邮件且未开启时可发送验证码并确认启用", async () => {
-      useSiteStore.setState({
-        info: publicInfo({ emailConfigured: true }),
-        loaded: true
-      })
+    it("开启验证器应用流程：点击开启从行尾进，展开扫码并完成确认", async () => {
       useAuthStore.setState({
-        user: me({ emailTwoFactorEnabled: false, totpEnabled: false }),
+        user: me({ totpEnabled: false }),
+        status: "ready"
+      })
+      vi.mocked(authApi.totpSetup).mockResolvedValue({
+        secret: "TESTSECRET123",
+        otpauthUrl: "otpauth://totp/test"
+      })
+      vi.mocked(authApi.totpEnable).mockResolvedValue({ success: true })
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[0]) // 点击验证器应用的开启
+      expect(authApi.totpSetup).toHaveBeenCalledTimes(1)
+
+      expect(await screen.findByText("TESTSECRET123")).toBeInTheDocument()
+      const codeInput = screen.getByLabelText("验证码")
+      await user.type(codeInput, "654321")
+      await user.click(screen.getByRole("button", { name: "确认开启" }))
+
+      expect(authApi.totpEnable).toHaveBeenCalledWith("654321")
+    })
+
+    it("开启邮箱验证码流程：点击开启从行尾进，发送验证码并完成确认", async () => {
+      useAuthStore.setState({
+        user: me({ emailTwoFactorEnabled: false }),
         status: "ready"
       })
       vi.mocked(authApi.emailTwoFactorEnableSend).mockResolvedValue({
@@ -213,49 +286,301 @@ describe("设置页", () => {
       vi.mocked(authApi.emailTwoFactorEnable).mockResolvedValue({
         success: true
       })
+
       const user = userEvent.setup()
       renderSettings()
 
-      await user.click(screen.getByRole("tab", { name: /安全|security/i }))
-      // 发送验证码按钮（i18n key 缺失时回退为键名 /common.sendCode/i）
-      const sendBtn = screen.getByRole("button", {
-        name: /发送验证码|Send code|common.sendCode/i
-      } as any)
-      await user.click(sendBtn)
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[1]) // 点击邮箱验证码的开启
       expect(authApi.emailTwoFactorEnableSend).toHaveBeenCalledTimes(1)
 
-      // 输入验证码并提交
-      await user.type(
-        screen.getByLabelText(/验证码|Verification code/),
-        "123456"
-      )
-      await user.click(screen.getByRole("button", { name: /确认开启|Confirm/ }))
+      const codeInput = await screen.findByLabelText("验证码")
+      await user.type(codeInput, "123456")
+      await user.click(screen.getByRole("button", { name: "确认开启" }))
+
       expect(authApi.emailTwoFactorEnable).toHaveBeenCalledWith("123456")
     })
 
-    it("已开启时提交关闭密码可停用", async () => {
-      useSiteStore.setState({
-        info: publicInfo({ emailConfigured: true }),
-        loaded: true
-      })
+    it("开启验证器应用失败时错误可见且不展开扫码", async () => {
       useAuthStore.setState({
-        user: me({ emailTwoFactorEnabled: true, totpEnabled: false }),
+        user: me({ totpEnabled: false }),
+        status: "ready"
+      })
+      vi.mocked(authApi.totpSetup).mockRejectedValueOnce(
+        new ApiError({
+          status: 400,
+          message: "Generic error",
+          code: "FORBIDDEN"
+        })
+      )
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[0])
+
+      expect(authApi.totpSetup).toHaveBeenCalledTimes(1)
+      expect(await withinSection.findByRole("alert")).toBeInTheDocument()
+      expect(withinSection.queryByLabelText("验证码")).not.toBeInTheDocument()
+    })
+
+    it("发送邮箱验证码失败时错误可见且冷却倒计时正常触发", async () => {
+      useAuthStore.setState({
+        user: me({ emailTwoFactorEnabled: false }),
+        status: "ready"
+      })
+      vi.mocked(authApi.emailTwoFactorEnableSend).mockRejectedValueOnce(
+        new ApiError({
+          status: 429,
+          message: "Rate limited",
+          code: "RATE_LIMITED",
+          retryAfter: 30
+        })
+      )
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+
+      const enableButtons = withinSection.getAllByRole("button", {
+        name: "开启"
+      })
+      await user.click(enableButtons[1])
+
+      expect(authApi.emailTwoFactorEnableSend).toHaveBeenCalledTimes(1)
+      expect(await withinSection.findByRole("alert")).toBeInTheDocument()
+      expect(withinSection.queryByLabelText("验证码")).not.toBeInTheDocument()
+      // 检查按钮显示倒计时
+      expect(
+        withinSection.getByRole("button", { name: /30 秒后可重发/i })
+      ).toBeDisabled()
+    })
+  })
+
+  describe("敏感操作密码确认弹窗流", () => {
+    it("页面上不常驻当前密码框；点击关闭动作出弹窗、输错密码报错留在弹窗内、输对密码完成动作", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: true, emailTwoFactorEnabled: true }),
+        status: "ready"
+      })
+      vi.mocked(authApi.totpDisable).mockRejectedValueOnce(
+        new ApiError({
+          status: 400,
+          message: "Password incorrect",
+          code: "PASSWORD_INCORRECT"
+        })
+      )
+      vi.mocked(authApi.totpDisable).mockResolvedValueOnce({ success: true })
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      // 验证页面上没有常驻的敏感操作密码框（全文仅修改密码表单本身持有 1 个当前密码输入框）
+      expect(screen.getAllByLabelText("当前密码")).toHaveLength(1)
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+      const closeButtons = withinSection.getAllByRole("button", {
+        name: "关闭"
+      })
+
+      // 1. 点动作出弹窗
+      await user.click(closeButtons[0]) // 点击关闭 TOTP
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toBeInTheDocument()
+      expect(within(dialog).getByText("安全验证")).toBeInTheDocument()
+
+      // 2. 输错密码报错留在弹窗内
+      const passwordInput = within(dialog).getByLabelText("当前密码")
+      await user.type(passwordInput, "wrong-password")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      await waitFor(() => {
+        expect(authApi.totpDisable).toHaveBeenCalledWith("wrong-password")
+      })
+      // 弹窗未关闭，报错在弹窗内
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(
+        "当前密码不正确"
+      )
+
+      // 3. 输对密码动作完成
+      await user.clear(passwordInput)
+      await user.type(passwordInput, "correct-password")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      await waitFor(() => {
+        expect(authApi.totpDisable).toHaveBeenCalledWith("correct-password")
+      })
+      // 动作完成，弹窗关闭
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      })
+    })
+
+    it("关闭邮箱验证码动作同样触发弹窗验证流", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: false, emailTwoFactorEnabled: true }),
         status: "ready"
       })
       vi.mocked(authApi.emailTwoFactorDisable).mockResolvedValue({
         success: true
       })
+
       const user = userEvent.setup()
       renderSettings()
 
-      await user.click(screen.getByRole("tab", { name: /安全|security/i }))
-      // 邮箱禁用表单的密码框有唯一 id
-      const pwInput = screen.getByLabelText(/当前密码|Current password/i, {
-        selector: "#email-disable-password"
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      const withinSection = within(twoFactorSection!)
+      await user.click(withinSection.getByRole("button", { name: "关闭" }))
+
+      const dialog = await screen.findByRole("dialog")
+      await user.type(within(dialog).getByLabelText("当前密码"), "my-password")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      await waitFor(() => {
+        expect(authApi.emailTwoFactorDisable).toHaveBeenCalledWith(
+          "my-password"
+        )
       })
-      await user.type(pwInput, "current-pw")
-      await user.click(screen.getByRole("button", { name: /关闭|Close/i }))
-      expect(authApi.emailTwoFactorDisable).toHaveBeenCalledWith("current-pw")
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      })
+    })
+
+    it("取消或关闭弹窗不产生任何请求", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: true }),
+        status: "ready"
+      })
+      const user = userEvent.setup()
+      renderSettings()
+
+      const twoFactorSection = screen
+        .getByRole("heading", { name: "两步验证" })
+        .closest("section")
+      await user.click(
+        within(twoFactorSection!).getByRole("button", { name: "关闭" })
+      )
+
+      const dialog = await screen.findByRole("dialog")
+      await user.type(within(dialog).getByLabelText("当前密码"), "my-password")
+      await user.click(within(dialog).getByRole("button", { name: "取消" }))
+
+      expect(authApi.totpDisable).not.toHaveBeenCalled()
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  describe("Passkey 区（通行密钥）", () => {
+    it("标题显示为通行密钥，每行显示添加于与最近使用，为空时显示从未使用", async () => {
+      vi.mocked(meApi.passkeys).mockResolvedValue({
+        items: [
+          {
+            id: 1,
+            createdAt: "2026-11-01T08:00:00Z",
+            lastUsedAt: null
+          },
+          {
+            id: 2,
+            createdAt: "2026-11-02T08:00:00Z",
+            lastUsedAt: "2026-11-15T08:00:00Z"
+          }
+        ]
+      })
+
+      renderSettings()
+
+      // 验证中文标题为「通行密钥」
+      expect(
+        screen.getByRole("heading", { name: "通行密钥" })
+      ).toBeInTheDocument()
+
+      // id: 1: lastUsedAt 为空 -> 显示「从未使用」
+      expect(await screen.findByText("从未使用")).toBeInTheDocument()
+
+      // id: 2: lastUsedAt 有值 -> 显示「最近使用」
+      expect(screen.getByText(/最近使用/)).toBeInTheDocument()
+    })
+
+    it("删除 Passkey 走密码确认弹窗", async () => {
+      vi.mocked(meApi.passkeys).mockResolvedValue({
+        items: [
+          {
+            id: 1,
+            createdAt: "2026-11-01T08:00:00Z",
+            lastUsedAt: null
+          }
+        ]
+      })
+      vi.mocked(meApi.deletePasskey).mockResolvedValue({ success: true })
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const deleteBtn = await screen.findByRole("button", { name: "删除" })
+      await user.click(deleteBtn)
+
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toBeInTheDocument()
+
+      await user.type(within(dialog).getByLabelText("当前密码"), "pass-123")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      await waitFor(() => {
+        expect(meApi.deletePasskey).toHaveBeenCalledWith(1, "pass-123")
+      })
+    })
+
+    it("添加 Passkey 走密码确认弹窗", async () => {
+      vi.mocked(authApi.passkeyRegisterOptions).mockResolvedValue({} as never)
+      vi.mocked(authApi.passkeyRegisterVerify).mockResolvedValue({
+        success: true
+      })
+
+      const user = userEvent.setup()
+      renderSettings()
+
+      const addBtn = await screen.findByRole("button", {
+        name: "添加 Passkey"
+      })
+      await user.click(addBtn)
+
+      const dialog = await screen.findByRole("dialog")
+      expect(dialog).toBeInTheDocument()
+
+      await user.type(within(dialog).getByLabelText("当前密码"), "pass-123")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      await waitFor(() => {
+        expect(authApi.passkeyRegisterOptions).toHaveBeenCalledWith("pass-123")
+        expect(authApi.passkeyRegisterVerify).toHaveBeenCalled()
+      })
     })
   })
 })

@@ -16,10 +16,12 @@ import { useAuthStore } from "@/stores/auth"
  */
 export function PasswordChangeForm({
   idPrefix,
-  onChanged
+  onChanged,
+  inputClassName
 }: {
   idPrefix: string
   onChanged?: () => void
+  inputClassName?: string
 }) {
   const { t } = useTranslation()
   const [currentPassword, setCurrentPassword] = useState("")
@@ -69,6 +71,7 @@ export function PasswordChangeForm({
           name="current-password"
           type="password"
           autoComplete="current-password"
+          className={inputClassName}
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
         />
@@ -82,6 +85,7 @@ export function PasswordChangeForm({
           name="new-password"
           type="password"
           autoComplete="new-password"
+          className={inputClassName}
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
         />
@@ -95,6 +99,7 @@ export function PasswordChangeForm({
           name="confirm-password"
           type="password"
           autoComplete="new-password"
+          className={inputClassName}
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
         />

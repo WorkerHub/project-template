@@ -2,9 +2,16 @@ import { QRCodeSVG } from "qrcode.react"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { Field } from "@/components/form-field"
 import { PasswordChangeForm } from "@/components/password-change-form"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -26,9 +33,16 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(intlLocale(currentLanguage()))
 }
 
+type ConfirmAction =
+  | { type: "totpDisable" }
+  | { type: "emailDisable" }
+  | { type: "passkeyAdd" }
+  | { type: "passkeyDelete"; passkey: PasskeySummary }
+  | null
+
 /**
- * 设置 · 安全：改密码、TOTP 开关、Passkey 管理（规格 §6.1）。
- * 所有凭据操作都对齐单 B 的契约；浏览器不支持 Passkey 时不渲染入口。
+ * 设置 · 安全：改密码、两步验证（TOTP 与邮箱验证码）、通行密钥（Passkey）。
+ * 所有敏感凭据操作统一通过密码确认弹窗收集当前密码；浏览器不支持 Passkey 时不渲染入口。
  */
 export function SecuritySection() {
   const { t } = useTranslation()
@@ -42,23 +56,21 @@ export function SecuritySection() {
     otpauthUrl: string
   } | null>(null)
   const [totpCode, setTotpCode] = useState("")
-  const [totpPassword, setTotpPassword] = useState("")
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState("")
 
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([])
-  const [passkeyPassword, setPasskeyPassword] = useState("")
-  const [passkeyBusy, setPasskeyBusy] = useState(false)
-  const [passkeyError, setPasskeyError] = useState("")
-  const [deleting, setDeleting] = useState<PasskeySummary | null>(null)
-  const [deletePassword, setDeletePassword] = useState("")
 
   const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [emailCode, setEmailCode] = useState("")
-  const [emailPassword, setEmailPassword] = useState("")
   const [emailBusy, setEmailBusy] = useState(false)
   const [emailError, setEmailError] = useState("")
   const emailCooldown = useCooldown()
+
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmError, setConfirmError] = useState("")
 
   const emailConfigured = info?.emailConfigured === true
   const emailEnabled = user?.emailTwoFactorEnabled === true
@@ -75,6 +87,78 @@ export function SecuritySection() {
   useEffect(() => {
     if (passkeySupported) void loadPasskeys()
   }, [loadPasskeys, passkeySupported])
+
+  const openConfirmDialog = (action: Exclude<ConfirmAction, null>) => {
+    setConfirmAction(action)
+    setConfirmPassword("")
+    setConfirmError("")
+    setConfirmBusy(false)
+  }
+
+  const closeConfirmDialog = () => {
+    setConfirmAction(null)
+    setConfirmPassword("")
+    setConfirmError("")
+    setConfirmBusy(false)
+  }
+
+  const handleConfirmSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!confirmAction) return
+
+    if (!confirmPassword) {
+      setConfirmError(t("auth.validation.passwordRequired"))
+      return
+    }
+
+    setConfirmBusy(true)
+    setConfirmError("")
+
+    try {
+      if (confirmAction.type === "totpDisable") {
+        await authApi.totpDisable(confirmPassword)
+        await refresh()
+        closeConfirmDialog()
+        toast.success(t("settings.security.totpDisabledToast"))
+      } else if (confirmAction.type === "emailDisable") {
+        await authApi.emailTwoFactorDisable(confirmPassword)
+        await refresh()
+        closeConfirmDialog()
+        toast.success(t("settings.security.emailDisabledToast"))
+      } else if (confirmAction.type === "passkeyAdd") {
+        const options = await authApi.passkeyRegisterOptions(confirmPassword)
+        const credential = await registrationCredential(options)
+        await authApi.passkeyRegisterVerify(credential)
+        closeConfirmDialog()
+        await loadPasskeys()
+        await refresh()
+        toast.success(t("settings.security.passkeyAdded"))
+      } else if (confirmAction.type === "passkeyDelete") {
+        await meApi.deletePasskey(confirmAction.passkey.id, confirmPassword)
+        closeConfirmDialog()
+        await loadPasskeys()
+        await refresh()
+        toast.success(t("settings.security.passkeyDeleted"))
+      }
+    } catch (error) {
+      if (confirmAction.type === "passkeyAdd" && isWebAuthnCancelled(error)) {
+        closeConfirmDialog()
+        return
+      }
+      setConfirmError(describeApiError(t, error))
+    } finally {
+      setConfirmBusy(false)
+    }
+  }
+
+  const isDestructiveAction = (action: ConfirmAction) => {
+    if (!action) return false
+    return (
+      action.type === "totpDisable" ||
+      action.type === "emailDisable" ||
+      action.type === "passkeyDelete"
+    )
+  }
 
   const startEmailEnableSend = async () => {
     setEmailBusy(true)
@@ -102,22 +186,6 @@ export function SecuritySection() {
       await refresh()
       setEmailCodeSent(false)
       setEmailCode("")
-    } catch (error) {
-      setEmailError(describeApiError(t, error))
-    } finally {
-      setEmailBusy(false)
-    }
-  }
-
-  const disableEmailTwoFactor = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setEmailBusy(true)
-    setEmailError("")
-    try {
-      await authApi.emailTwoFactorDisable(emailPassword)
-      await refresh()
-      setEmailPassword("")
-      toast.success(t("settings.security.emailDisabledToast"))
     } catch (error) {
       setEmailError(describeApiError(t, error))
     } finally {
@@ -155,65 +223,6 @@ export function SecuritySection() {
     }
   }
 
-  const disableTotp = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setTotpBusy(true)
-    setTotpError("")
-    try {
-      await authApi.totpDisable(totpPassword)
-      await refresh()
-      setTotpPassword("")
-      toast.success(t("settings.security.totpDisabledToast"))
-    } catch (error) {
-      setTotpError(describeApiError(t, error))
-    } finally {
-      setTotpBusy(false)
-    }
-  }
-
-  const addPasskey = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!passkeyPassword) {
-      setPasskeyError(t("auth.validation.passwordRequired"))
-      return
-    }
-    setPasskeyBusy(true)
-    setPasskeyError("")
-    try {
-      const options = await authApi.passkeyRegisterOptions(passkeyPassword)
-      const credential = await registrationCredential(options)
-      await authApi.passkeyRegisterVerify(credential)
-      setPasskeyPassword("")
-      await loadPasskeys()
-      await refresh()
-      toast.success(t("settings.security.passkeyAdded"))
-    } catch (error) {
-      if (isWebAuthnCancelled(error)) return
-      setPasskeyError(describeApiError(t, error))
-    } finally {
-      setPasskeyBusy(false)
-    }
-  }
-
-  const deletePasskey = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!deleting) return
-    setPasskeyBusy(true)
-    setPasskeyError("")
-    try {
-      await meApi.deletePasskey(deleting.id, deletePassword)
-      setDeleting(null)
-      setDeletePassword("")
-      await loadPasskeys()
-      await refresh()
-      toast.success(t("settings.security.passkeyDeleted"))
-    } catch (error) {
-      setPasskeyError(describeApiError(t, error))
-    } finally {
-      setPasskeyBusy(false)
-    }
-  }
-
   const errorLine = (message: string) =>
     message ? (
       <p role="alert" className="text-sm text-destructive">
@@ -227,200 +236,205 @@ export function SecuritySection() {
         <h3 className="font-heading text-sm font-semibold">
           {t("settings.security.passwordTitle")}
         </h3>
-        <PasswordChangeForm idPrefix="security" />
+        <PasswordChangeForm
+          idPrefix="security"
+          inputClassName="w-full sm:w-80"
+        />
       </section>
 
       <Separator />
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="font-heading text-sm font-semibold">
-            {t("settings.security.totpTitle")}
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            {user?.totpEnabled
-              ? t("settings.security.totpEnabled")
-              : t("settings.security.totpDisabled")}
-          </span>
-        </div>
+        <h3 className="font-heading text-sm font-semibold">
+          {t("settings.security.totpTitle")}
+        </h3>
 
-        {user?.totpEnabled ? (
-          <form className="space-y-3" onSubmit={disableTotp}>
-            <div className="space-y-1.5">
-              <Label htmlFor="totp-disable-password">
-                {t("common.currentPassword")}
-              </Label>
-              <Input
-                id="totp-disable-password"
-                name="current-password"
-                type="password"
-                autoComplete="current-password"
-                value={totpPassword}
-                onChange={(event) => setTotpPassword(event.target.value)}
-              />
-            </div>
-            {errorLine(totpError)}
-            <Button type="submit" variant="outline" disabled={totpBusy}>
-              {t("settings.security.totpDisable")}
-            </Button>
-          </form>
-        ) : totpSetup ? (
-          <form className="space-y-3" onSubmit={confirmTotp}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="w-fit rounded-lg bg-white p-2">
-                <QRCodeSVG value={totpSetup.otpauthUrl} size={128} />
-              </div>
-              <div className="space-y-1 text-sm">
-                <p className="text-muted-foreground">
-                  {t("settings.security.totpScan")}
+        <div className="space-y-3">
+          {/* 行 1: 验证器应用 */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">
+                  {t("settings.security.totpApp")}
                 </p>
-                <p className="font-mono text-xs break-all">
-                  {totpSetup.secret}
+                <p className="text-xs text-muted-foreground">
+                  {user?.totpEnabled
+                    ? t("settings.security.totpEnabled")
+                    : t("settings.security.totpDisabled")}
                 </p>
               </div>
+              {user?.totpEnabled ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => openConfirmDialog({ type: "totpDisable" })}
+                >
+                  {t("settings.security.totpDisable")}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={totpBusy || totpSetup !== null}
+                  onClick={() => void startTotp()}
+                >
+                  {t("settings.security.totpEnable")}
+                </Button>
+              )}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="totp-enable-code">
-                {t("settings.security.totpCode")}
-              </Label>
-              <Input
-                id="totp-enable-code"
-                name="totp-code"
-                type="text"
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                maxLength={6}
-                value={totpCode}
-                onChange={(event) =>
-                  setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-              />
-            </div>
+
             {errorLine(totpError)}
-            <Button type="submit" disabled={totpBusy}>
-              {t("settings.security.totpConfirm")}
-            </Button>
-          </form>
-        ) : (
-          <div className="space-y-3">
-            {errorLine(totpError)}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={totpBusy}
-              onClick={() => void startTotp()}
-            >
-              {t("settings.security.totpEnable")}
-            </Button>
-          </div>
-        )}
-      </section>
 
-      <Separator />
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="font-heading text-sm font-semibold">
-            {t("settings.security.emailTitle")}
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            {emailEnabled
-              ? t("settings.security.emailEnabled")
-              : emailConfigured
-                ? t("settings.security.emailDisabled")
-                : t("common.emailNotConfigured")}
-          </span>
-        </div>
-
-        {emailEnabled ? (
-          <form className="space-y-3" onSubmit={disableEmailTwoFactor}>
-            <div className="space-y-1.5">
-              <Label htmlFor="email-disable-password">
-                {t("common.currentPassword")}
-              </Label>
-              <Input
-                id="email-disable-password"
-                name="current-password"
-                type="password"
-                autoComplete="current-password"
-                value={emailPassword}
-                onChange={(event) => setEmailPassword(event.target.value)}
-              />
-            </div>
-            {emailError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {emailError}
-              </p>
+            {!user?.totpEnabled && totpSetup ? (
+              <form className="space-y-3 border-t pt-2" onSubmit={confirmTotp}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="w-fit rounded-lg bg-white p-2">
+                    <QRCodeSVG value={totpSetup.otpauthUrl} size={128} />
+                  </div>
+                  <div className="space-y-1 text-sm">
+                    <p className="text-muted-foreground">
+                      {t("settings.security.totpScan")}
+                    </p>
+                    <p className="font-mono text-xs break-all">
+                      {totpSetup.secret}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="totp-enable-code">
+                    {t("settings.security.totpCode")}
+                  </Label>
+                  <Input
+                    id="totp-enable-code"
+                    name="totp-code"
+                    type="text"
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="w-full sm:w-80"
+                    value={totpCode}
+                    onChange={(event) =>
+                      setTotpCode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6)
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={totpBusy}>
+                    {t("settings.security.totpConfirm")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setTotpSetup(null)
+                      setTotpCode("")
+                      setTotpError("")
+                    }}
+                  >
+                    {t("common.actions.cancel")}
+                  </Button>
+                </div>
+              </form>
             ) : null}
-            <Button type="submit" variant="outline" disabled={emailBusy}>
-              {t("settings.security.emailDisable")}
-            </Button>
-          </form>
-        ) : emailConfigured ? (
-          emailCodeSent ? (
-            <form className="space-y-3" onSubmit={confirmEmailEnable}>
-              <Field id="email-enable-code" label={t("common.code")}>
-                <Input
-                  id="email-enable-code"
-                  name="email-enable-code"
-                  type="text"
-                  autoComplete="one-time-code"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={emailCode}
-                  aria-invalid={Boolean(emailError)}
-                  onChange={(event) =>
-                    setEmailCode(
-                      event.target.value.replace(/\D/g, "").slice(0, 6)
-                    )
-                  }
-                />
-              </Field>
+          </div>
 
-              {emailError ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {emailError}
+          {/* 行 2: 邮箱验证码 */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">
+                  {t("settings.security.emailTitle")}
                 </p>
-              ) : null}
-              <Button type="submit" disabled={emailBusy}>
-                {t("settings.security.emailConfirm")}
-              </Button>
-
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={emailBusy || emailCooldown.running}
-                onClick={() => void startEmailEnableSend()}
-              >
-                {emailCooldown.running
-                  ? t("common.resendIn", {
-                      seconds: emailCooldown.seconds
-                    })
-                  : t("common.resend")}
-              </Button>
-            </form>
-          ) : (
-            <div className="space-y-3">
-              {emailError ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {emailError}
+                <p className="text-xs text-muted-foreground">
+                  {emailEnabled
+                    ? t("settings.security.emailEnabled")
+                    : emailConfigured
+                      ? t("settings.security.emailDisabled")
+                      : t("common.emailNotConfigured")}
                 </p>
+              </div>
+              {emailEnabled ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => openConfirmDialog({ type: "emailDisable" })}
+                >
+                  {t("settings.security.emailDisable")}
+                </Button>
+              ) : emailConfigured ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={emailBusy || emailCooldown.running || emailCodeSent}
+                  onClick={() => void startEmailEnableSend()}
+                >
+                  {emailCooldown.running
+                    ? t("common.resendIn", { seconds: emailCooldown.seconds })
+                    : t("settings.security.emailEnable")}
+                </Button>
               ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                disabled={emailBusy || emailCooldown.running}
-                onClick={() => void startEmailEnableSend()}
-              >
-                {emailCooldown.running
-                  ? t("common.resendIn", {
-                      seconds: emailCooldown.seconds
-                    })
-                  : t("common.actions.sendCode")}
-              </Button>
             </div>
-          )
-        ) : null}
+
+            {errorLine(emailError)}
+
+            {!emailEnabled && emailConfigured && emailCodeSent ? (
+              <form
+                className="space-y-3 border-t pt-2"
+                onSubmit={confirmEmailEnable}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="email-enable-code">{t("common.code")}</Label>
+                  <Input
+                    id="email-enable-code"
+                    name="email-enable-code"
+                    type="text"
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="w-full sm:w-80"
+                    value={emailCode}
+                    aria-invalid={Boolean(emailError)}
+                    onChange={(event) =>
+                      setEmailCode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6)
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="submit" disabled={emailBusy}>
+                    {t("settings.security.emailConfirm")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={emailBusy || emailCooldown.running}
+                    onClick={() => void startEmailEnableSend()}
+                  >
+                    {emailCooldown.running
+                      ? t("common.resendIn", {
+                          seconds: emailCooldown.seconds
+                        })
+                      : t("common.resend")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setEmailCodeSent(false)
+                      setEmailCode("")
+                      setEmailError("")
+                    }}
+                  >
+                    {t("common.actions.cancel")}
+                  </Button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        </div>
       </section>
 
       <Separator />
@@ -435,7 +449,7 @@ export function SecuritySection() {
             {t("settings.security.passkeyUnsupported")}
           </p>
         ) : (
-          <>
+          <div className="space-y-3">
             <ul className="space-y-2 text-sm">
               {passkeys.length === 0 ? (
                 <li className="text-muted-foreground">
@@ -453,23 +467,24 @@ export function SecuritySection() {
                           date: formatDate(passkey.createdAt)
                         })}
                       </p>
-                      {passkey.lastUsedAt ? (
-                        <p className="text-xs text-muted-foreground">
-                          {t("settings.security.passkeyLastUsed", {
-                            date: formatDate(passkey.lastUsedAt)
-                          })}
-                        </p>
-                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        {passkey.lastUsedAt
+                          ? t("settings.security.passkeyLastUsed", {
+                              date: formatDate(passkey.lastUsedAt)
+                            })
+                          : t("settings.security.passkeyNeverUsed")}
+                      </p>
                     </div>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        setDeleting(passkey)
-                        setDeletePassword("")
-                        setPasskeyError("")
-                      }}
+                      onClick={() =>
+                        openConfirmDialog({
+                          type: "passkeyDelete",
+                          passkey
+                        })
+                      }
                     >
                       {t("settings.security.passkeyDelete")}
                     </Button>
@@ -478,65 +493,84 @@ export function SecuritySection() {
               )}
             </ul>
 
-            {deleting ? (
-              <form
-                className="space-y-3 rounded-lg border p-3"
-                onSubmit={deletePasskey}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => openConfirmDialog({ type: "passkeyAdd" })}
               >
-                <div className="space-y-1.5">
-                  <Label htmlFor="passkey-delete-password">
-                    {t("common.currentPassword")}
-                  </Label>
-                  <Input
-                    id="passkey-delete-password"
-                    name="current-password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={deletePassword}
-                    onChange={(event) => setDeletePassword(event.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    variant="destructive"
-                    disabled={passkeyBusy}
-                  >
-                    {t("settings.security.passkeyDelete")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setDeleting(null)}
-                  >
-                    {t("common.actions.cancel")}
-                  </Button>
-                </div>
-              </form>
-            ) : null}
-
-            <form className="space-y-3" onSubmit={addPasskey}>
-              <div className="space-y-1.5">
-                <Label htmlFor="passkey-add-password">
-                  {t("common.currentPassword")}
-                </Label>
-                <Input
-                  id="passkey-add-password"
-                  name="current-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={passkeyPassword}
-                  onChange={(event) => setPasskeyPassword(event.target.value)}
-                />
-              </div>
-              {errorLine(passkeyError)}
-              <Button type="submit" variant="outline" disabled={passkeyBusy}>
                 {t("settings.security.passkeyAdd")}
               </Button>
-            </form>
-          </>
+            </div>
+          </div>
         )}
       </section>
+
+      <Dialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeConfirmDialog()
+          }
+        }}
+      >
+        <DialogContent>
+          <form className="space-y-4" onSubmit={handleConfirmSubmit}>
+            <DialogHeader>
+              <DialogTitle>
+                {t("settings.security.confirmPasswordTitle")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("settings.security.confirmPasswordDescription")}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-action-password">
+                {t("common.currentPassword")}
+              </Label>
+              <Input
+                id="confirm-action-password"
+                name="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                disabled={confirmBusy}
+                autoFocus
+              />
+            </div>
+
+            {confirmError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {confirmError}
+              </p>
+            ) : null}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={confirmBusy}
+                onClick={closeConfirmDialog}
+              >
+                {t("common.actions.cancel")}
+              </Button>
+              <Button
+                type="submit"
+                variant={
+                  isDestructiveAction(confirmAction) ? "destructive" : "default"
+                }
+                disabled={confirmBusy}
+              >
+                {confirmBusy
+                  ? t("common.actions.saving")
+                  : t("common.actions.confirm")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
