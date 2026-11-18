@@ -9,7 +9,7 @@
  * - 初始化完成显式写关 setup_page_enabled=0，且不覆盖已有值
  */
 import { describe, expect, it } from "vitest"
-import { DEFAULT_TABLE_PREFIX } from "../src/config/project"
+import { DEFAULT_TABLE_PREFIX, PROJECT_SLUG } from "../src/config/project"
 import { getTablePrefix } from "../src/lib/table-prefix"
 import { ledgerName } from "../src/lib/setup"
 import {
@@ -76,10 +76,13 @@ describe("setup：初始化与回显", () => {
     expect(users.n).toBe(0)
   })
 
-  it("初始化完成显式写关 setup_page_enabled=0", async () => {
+  it("初始化完成显式写关 setup_page_enabled=0 并播种 project_slug", async () => {
     const { env, db } = makeContext()
     await postSetup(env, SECRET_HEADER)
     expect(readSetting(db, activePrefix(env), "setup_page_enabled")).toBe("0")
+    expect(readSetting(db, activePrefix(env), "project_slug")).toBe(
+      PROJECT_SLUG
+    )
   })
 
   it("重复 setup：全部 skipped，且不覆盖已有设置", async () => {
@@ -290,7 +293,46 @@ describe("setup：前缀冲突", () => {
     expect(body.resolvedPrefix).toBe(DEFAULT_PREFIX)
     expect(body.detectedPrefixes).toEqual(["fleet_"])
     expect(body.error).toContain("TABLE_PREFIX")
+    expect(body.error).toContain(PROJECT_SLUG)
+    expect(body.error).toContain(DEFAULT_PREFIX)
+    expect(body.error).toContain("fleet_")
     expect(tableNames(db)).toEqual(before)
+  })
+
+  it("共享库存在兄弟项目三件套（slug 不同）→ setup 成功返回 200", async () => {
+    const { env, db } = makeContext()
+    const brotherPrefix = "brother_"
+    db.db.exec(
+      `CREATE TABLE ${usersTable(brotherPrefix)} (id TEXT PRIMARY KEY);
+       CREATE TABLE ${sessionsTable(brotherPrefix)} (id TEXT PRIMARY KEY);
+       CREATE TABLE ${settingsTable(brotherPrefix)} (key TEXT PRIMARY KEY, value TEXT);
+       INSERT INTO ${settingsTable(brotherPrefix)} (key, value) VALUES ('project_slug', 'brother_app');`
+    )
+
+    const res = await postSetup(env, SECRET_HEADER)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; tablePrefix: string }
+    expect(body.success).toBe(true)
+    expect(body.tablePrefix).toBe(DEFAULT_PREFIX)
+    expect(tableNames(db)).toContain(usersTable(DEFAULT_PREFIX))
+  })
+
+  it("共享库存在存量旧三件套（无 slug 行）→ setup 成功返回 200", async () => {
+    const { env, db } = makeContext()
+    const legacyPrefix = "legacy_"
+    db.db.exec(
+      `CREATE TABLE ${usersTable(legacyPrefix)} (id TEXT PRIMARY KEY);
+       CREATE TABLE ${sessionsTable(legacyPrefix)} (id TEXT PRIMARY KEY);
+       CREATE TABLE ${settingsTable(legacyPrefix)} (key TEXT PRIMARY KEY, value TEXT);
+       INSERT INTO ${settingsTable(legacyPrefix)} (key, value) VALUES ('setup_page_enabled', '0');`
+    )
+
+    const res = await postSetup(env, SECRET_HEADER)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { success: boolean; tablePrefix: string }
+    expect(body.success).toBe(true)
+    expect(body.tablePrefix).toBe(DEFAULT_PREFIX)
+    expect(tableNames(db)).toContain(usersTable(DEFAULT_PREFIX))
   })
 
   it("冲突且密钥不对 → 403，不泄露检测到的前缀", async () => {

@@ -10,6 +10,7 @@
  */
 import { getTablePrefix } from "./table-prefix"
 import { isConfiguredSecret } from "../core/auth"
+import { PROJECT_SLUG } from "../config/project"
 import {
   migrationsTable,
   sessionsTable,
@@ -46,6 +47,7 @@ export type SetupResult =
 
 /** 初始化完成后写入的站点设置默认值（INSERT OR IGNORE，不覆盖已有值）。 */
 export const DEFAULT_SETTINGS: Record<string, string> = {
+  project_slug: PROJECT_SLUG,
   setup_page_enabled: "0",
   registration_enabled: "true",
   registration_approval_required: "true",
@@ -210,19 +212,32 @@ async function hasForeignUsersTable(
 }
 
 /**
- * 只读前缀冲突探测：库里已在另一个前缀下初始化、或当前前缀被别人的同名表
+ * 只读前缀冲突探测：库里已在另一个前缀下初始化过本项目、或当前前缀被别人的同名表
  * 占用时返回冲突信息。setup 路由在限流（会建计数表）之前先调它，保证冲突时
  * 一个表都不写。
+ *
+ * 语义：
+ * - 只有当某个外来三件套的 project_slug 等于本项目 PROJECT_SLUG、且前缀 ≠ 当前生效前缀时，
+ *   才算真冲突（PREFIX_CONFLICT）。
+ * - 兄弟项目（不同 slug）或存量项目（无 project_slug）一律放行，共享 D1 库是常态。
  */
 export async function findForeignPrefixConflict(
   env: Env
 ): Promise<SetupConflict | null> {
   const prefix = getTablePrefix(env)
   const detected = [...detectTablePrefixes(await listTables(env.DB))].sort()
-  if (detected.length > 0 && !detected.includes(prefix)) {
+  const foreignConflicts: string[] = []
+  for (const foreignPrefix of detected) {
+    if (foreignPrefix === prefix) continue
+    const slug = await getSetting(env.DB, foreignPrefix, "project_slug")
+    if (slug === PROJECT_SLUG) {
+      foreignConflicts.push(foreignPrefix)
+    }
+  }
+  if (foreignConflicts.length > 0) {
     return {
       resolvedPrefix: prefix,
-      detectedPrefixes: detected,
+      detectedPrefixes: foreignConflicts,
       reason: "foreign-prefix"
     }
   }
@@ -244,8 +259,8 @@ function prefixConflict(conflict: SetupConflict): SetupResult {
         `but it is not this project's schema (missing password_hash/status/role), so ` +
         `CREATE TABLE IF NOT EXISTS would silently reuse it. Remove or rename that table, ` +
         `or choose another TABLE_PREFIX, then run setup again.`
-      : `TABLE_PREFIX mismatch: this database is already initialized under a different ` +
-        `table prefix (detected by users+system_settings+sessions: ${detectedPrefixes.join(", ")}), ` +
+      : `TABLE_PREFIX mismatch: this database is already initialized for project "${PROJECT_SLUG}" ` +
+        `under a different table prefix (${detectedPrefixes.join(", ")}), ` +
         `but TABLE_PREFIX resolves to "${resolvedPrefix}". Set TABLE_PREFIX explicitly to ` +
         `keep the existing tables, or migrate the tables to the new prefix before retrying setup.`
   return {
