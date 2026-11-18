@@ -9,8 +9,8 @@ import {
   SUPPORTED_LANGUAGES
 } from "@/lib/language"
 
-interface LanguageCycleButtonProps {
-  /** 交给调用方接管写回；不传则只改本机选择。 */
+interface LanguagePickerProps {
+  /** 交给调用方接管写回（设置页等同步账号）；不传则只改本机选择。 */
   onChange?: (language: Language) => void
 }
 
@@ -34,8 +34,8 @@ function useLanguageChoice(onChange?: (language: Language) => void) {
   }
 }
 
-/** 未登录页快捷切换：按支持集循环。 */
-export function LanguageCycleButton({ onChange }: LanguageCycleButtonProps) {
+/** 未登录页的快捷切换：按支持集循环。 */
+export function LanguageCycleButton({ onChange }: LanguagePickerProps) {
   const { t } = useTranslation()
   const { current, select } = useLanguageChoice(onChange)
   const label = t("common.languages.switch", {

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { UnsavedChangesGuard } from "@/components/unsaved-changes-guard"
 import { adminApi } from "@/lib/api"
 import { describeApiError } from "@/lib/api-errors"
 import type {
@@ -32,6 +33,8 @@ export function CreateUserSection() {
   const [error, setError] = useState("")
   const [result, setResult] = useState<AdminCreateUserResult | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const isDirty = Boolean(email.trim() || displayName.trim() || role !== "user")
 
   const resetForm = () => {
     setEmail("")
@@ -77,6 +80,7 @@ export function CreateUserSection() {
 
   return (
     <section className="space-y-3 rounded-xl border bg-card p-4">
+      <UnsavedChangesGuard isDirty={isDirty} />
       <h3 className="font-heading text-sm font-semibold">
         {t("admin.users.create.title")}
       </h3>

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useOutletContext } from "react-router"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { adminApi } from "@/lib/api"
@@ -16,19 +17,23 @@ import type {
  * 「注册需邮箱验证」在邮件未配置时不可开启（前端置灰，后端同样拒绝）；
  * 若开关早已打开而邮件被清空，这里明确提示「暂不生效」，不把新用户锁死。
  */
-export function RegistrationSection({
-  settings,
-  onSaved
-}: {
-  settings: AdminSettings
-  onSaved: (settings: AdminSettings) => void
+export function RegistrationSection(props?: {
+  settings?: AdminSettings
+  onSaved?: (settings: AdminSettings) => void
 }) {
   const { t } = useTranslation()
-  const registration = settings.registration
+  const outlet = useOutletContext<{
+    settings: AdminSettings
+    onSaved: (settings: AdminSettings) => void
+  } | null>()
+  const settings = props?.settings ?? outlet?.settings
+  const onSaved = props?.onSaved ?? outlet?.onSaved ?? (() => {})
+
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
-  if (!registration) return null
+  if (!settings?.registration) return null
+  const registration = settings.registration
 
   const emailConfigured = settings.email.configured
 

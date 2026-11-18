@@ -33,16 +33,17 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(intlLocale(currentLanguage()))
 }
 
-type ConfirmAction =
-  | { type: "totpDisable" }
-  | { type: "emailDisable" }
-  | { type: "passkeyAdd" }
-  | { type: "passkeyDelete"; passkey: PasskeySummary }
-  | null
+interface PendingAction {
+  title?: string
+  description?: string
+  confirmText?: string
+  destructive?: boolean
+  execute: (password: string) => Promise<void>
+}
 
 /**
- * 设置 · 安全：改密码、两步验证（TOTP 与邮箱验证码）、通行密钥（Passkey）。
- * 所有敏感凭据操作统一通过密码确认弹窗收集当前密码；浏览器不支持 Passkey 时不渲染入口。
+ * 设置 · 安全：改密码、两步验证（TOTP + 邮箱验证码）、Passkey 管理。
+ * 敏感动作（关闭验证、添加/删除 Passkey）统一走密码确认弹窗，页面不常驻密码框。
  */
 export function SecuritySection() {
   const { t } = useTranslation()
@@ -50,6 +51,11 @@ export function SecuritySection() {
   const refresh = useAuthStore((state) => state.refresh)
   const info = useSiteStore((state) => state.info)
   const passkeySupported = webauthnSupported()
+
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmError, setConfirmError] = useState("")
 
   const [totpSetup, setTotpSetup] = useState<{
     secret: string
@@ -67,11 +73,6 @@ export function SecuritySection() {
   const [emailError, setEmailError] = useState("")
   const emailCooldown = useCooldown()
 
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [confirmBusy, setConfirmBusy] = useState(false)
-  const [confirmError, setConfirmError] = useState("")
-
   const emailConfigured = info?.emailConfigured === true
   const emailEnabled = user?.emailTwoFactorEnabled === true
 
@@ -88,61 +89,30 @@ export function SecuritySection() {
     if (passkeySupported) void loadPasskeys()
   }, [loadPasskeys, passkeySupported])
 
-  const openConfirmDialog = (action: Exclude<ConfirmAction, null>) => {
-    setConfirmAction(action)
+  const handleDialogClose = () => {
+    if (confirmBusy) return
+    setPendingAction(null)
     setConfirmPassword("")
     setConfirmError("")
-    setConfirmBusy(false)
-  }
-
-  const closeConfirmDialog = () => {
-    setConfirmAction(null)
-    setConfirmPassword("")
-    setConfirmError("")
-    setConfirmBusy(false)
   }
 
   const handleConfirmSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!confirmAction) return
-
+    if (!pendingAction) return
     if (!confirmPassword) {
       setConfirmError(t("auth.validation.passwordRequired"))
       return
     }
-
     setConfirmBusy(true)
     setConfirmError("")
-
     try {
-      if (confirmAction.type === "totpDisable") {
-        await authApi.totpDisable(confirmPassword)
-        await refresh()
-        closeConfirmDialog()
-        toast.success(t("settings.security.totpDisabledToast"))
-      } else if (confirmAction.type === "emailDisable") {
-        await authApi.emailTwoFactorDisable(confirmPassword)
-        await refresh()
-        closeConfirmDialog()
-        toast.success(t("settings.security.emailDisabledToast"))
-      } else if (confirmAction.type === "passkeyAdd") {
-        const options = await authApi.passkeyRegisterOptions(confirmPassword)
-        const credential = await registrationCredential(options)
-        await authApi.passkeyRegisterVerify(credential)
-        closeConfirmDialog()
-        await loadPasskeys()
-        await refresh()
-        toast.success(t("settings.security.passkeyAdded"))
-      } else if (confirmAction.type === "passkeyDelete") {
-        await meApi.deletePasskey(confirmAction.passkey.id, confirmPassword)
-        closeConfirmDialog()
-        await loadPasskeys()
-        await refresh()
-        toast.success(t("settings.security.passkeyDeleted"))
-      }
+      await pendingAction.execute(confirmPassword)
+      setPendingAction(null)
+      setConfirmPassword("")
     } catch (error) {
-      if (confirmAction.type === "passkeyAdd" && isWebAuthnCancelled(error)) {
-        closeConfirmDialog()
+      if (isWebAuthnCancelled(error)) {
+        setPendingAction(null)
+        setConfirmPassword("")
         return
       }
       setConfirmError(describeApiError(t, error))
@@ -151,13 +121,102 @@ export function SecuritySection() {
     }
   }
 
-  const isDestructiveAction = (action: ConfirmAction) => {
-    if (!action) return false
-    return (
-      action.type === "totpDisable" ||
-      action.type === "emailDisable" ||
-      action.type === "passkeyDelete"
-    )
+  const openDisableTotp = () => {
+    setPendingAction({
+      title: t("settings.security.verifyPasswordTitle"),
+      description: t("settings.security.verifyPasswordDescription"),
+      confirmText: t("common.actions.confirm"),
+      destructive: true,
+      execute: async (password) => {
+        await authApi.totpDisable(password)
+        await refresh()
+        toast.success(t("settings.security.totpDisabledToast"))
+      }
+    })
+    setConfirmPassword("")
+    setConfirmError("")
+  }
+
+  const openDisableEmail = () => {
+    setPendingAction({
+      title: t("settings.security.verifyPasswordTitle"),
+      description: t("settings.security.verifyPasswordDescription"),
+      confirmText: t("common.actions.confirm"),
+      destructive: true,
+      execute: async (password) => {
+        await authApi.emailTwoFactorDisable(password)
+        await refresh()
+        toast.success(t("settings.security.emailDisabledToast"))
+      }
+    })
+    setConfirmPassword("")
+    setConfirmError("")
+  }
+
+  const openAddPasskey = () => {
+    setPendingAction({
+      title: t("settings.security.verifyPasswordTitle"),
+      description: t("settings.security.verifyPasswordDescription"),
+      confirmText: t("common.actions.confirm"),
+      destructive: false,
+      execute: async (password) => {
+        const options = await authApi.passkeyRegisterOptions(password)
+        const credential = await registrationCredential(options)
+        await authApi.passkeyRegisterVerify(credential)
+        await loadPasskeys()
+        await refresh()
+        toast.success(t("settings.security.passkeyAdded"))
+      }
+    })
+    setConfirmPassword("")
+    setConfirmError("")
+  }
+
+  const openDeletePasskey = (passkey: PasskeySummary) => {
+    setPendingAction({
+      title: t("settings.security.verifyPasswordTitle"),
+      description: t("settings.security.verifyPasswordDescription"),
+      confirmText: t("common.actions.confirm"),
+      destructive: true,
+      execute: async (password) => {
+        await meApi.deletePasskey(passkey.id, password)
+        await loadPasskeys()
+        await refresh()
+        toast.success(t("settings.security.passkeyDeleted"))
+      }
+    })
+    setConfirmPassword("")
+    setConfirmError("")
+  }
+
+  const startTotp = async () => {
+    setTotpBusy(true)
+    setTotpError("")
+    try {
+      const setup = await authApi.totpSetup()
+      setTotpSetup(setup)
+      setTotpCode("")
+    } catch (error) {
+      setTotpError(describeApiError(t, error))
+    } finally {
+      setTotpBusy(false)
+    }
+  }
+
+  const confirmTotp = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setTotpBusy(true)
+    setTotpError("")
+    try {
+      await authApi.totpEnable(totpCode)
+      await refresh()
+      setTotpSetup(null)
+      setTotpCode("")
+    } catch (error) {
+      setTotpError(describeApiError(t, error))
+    } finally {
+      setTotpBusy(false)
+    }
   }
 
   const startEmailEnableSend = async () => {
@@ -193,36 +252,6 @@ export function SecuritySection() {
     }
   }
 
-  const startTotp = async () => {
-    setTotpBusy(true)
-    setTotpError("")
-    try {
-      const setup = await authApi.totpSetup()
-      setTotpSetup(setup)
-      setTotpCode("")
-    } catch (error) {
-      setTotpError(describeApiError(t, error))
-    } finally {
-      setTotpBusy(false)
-    }
-  }
-
-  const confirmTotp = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setTotpBusy(true)
-    setTotpError("")
-    try {
-      await authApi.totpEnable(totpCode)
-      await refresh()
-      setTotpSetup(null)
-      setTotpCode("")
-    } catch (error) {
-      setTotpError(describeApiError(t, error))
-    } finally {
-      setTotpBusy(false)
-    }
-  }
-
   const errorLine = (message: string) =>
     message ? (
       <p role="alert" className="text-sm text-destructive">
@@ -250,12 +279,14 @@ export function SecuritySection() {
         </h3>
 
         <div className="space-y-3">
-          {/* 行 1: 验证器应用 */}
-          <div className="space-y-3 rounded-lg border p-3">
+          <div
+            data-testid="totp-row"
+            className="space-y-3 rounded-lg border p-3"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="space-y-0.5">
                 <p className="text-sm font-medium">
-                  {t("settings.security.totpApp")}
+                  {t("settings.security.totpItemTitle")}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {user?.totpEnabled
@@ -267,26 +298,40 @@ export function SecuritySection() {
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => openConfirmDialog({ type: "totpDisable" })}
+                  size="sm"
+                  onClick={openDisableTotp}
                 >
                   {t("settings.security.totpDisable")}
+                </Button>
+              ) : !totpSetup ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={totpBusy}
+                  onClick={() => void startTotp()}
+                >
+                  {t("settings.security.totpEnable")}
                 </Button>
               ) : (
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={totpBusy || totpSetup !== null}
-                  onClick={() => void startTotp()}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTotpSetup(null)
+                    setTotpError("")
+                  }}
                 >
-                  {t("settings.security.totpEnable")}
+                  {t("common.actions.cancel")}
                 </Button>
               )}
             </div>
 
             {errorLine(totpError)}
 
-            {!user?.totpEnabled && totpSetup ? (
-              <form className="space-y-3 border-t pt-2" onSubmit={confirmTotp}>
+            {totpSetup && !user?.totpEnabled ? (
+              <form className="space-y-3 pt-2" onSubmit={confirmTotp}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div className="w-fit rounded-lg bg-white p-2">
                     <QRCodeSVG value={totpSetup.otpauthUrl} size={128} />
@@ -320,28 +365,17 @@ export function SecuritySection() {
                     }
                   />
                 </div>
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={totpBusy}>
-                    {t("settings.security.totpConfirm")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setTotpSetup(null)
-                      setTotpCode("")
-                      setTotpError("")
-                    }}
-                  >
-                    {t("common.actions.cancel")}
-                  </Button>
-                </div>
+                <Button type="submit" disabled={totpBusy}>
+                  {t("settings.security.totpConfirm")}
+                </Button>
               </form>
             ) : null}
           </div>
 
-          {/* 行 2: 邮箱验证码 */}
-          <div className="space-y-3 rounded-lg border p-3">
+          <div
+            data-testid="email-row"
+            className="space-y-3 rounded-lg border p-3"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="space-y-0.5">
                 <p className="text-sm font-medium">
@@ -359,31 +393,47 @@ export function SecuritySection() {
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => openConfirmDialog({ type: "emailDisable" })}
+                  size="sm"
+                  onClick={openDisableEmail}
                 >
                   {t("settings.security.emailDisable")}
                 </Button>
               ) : emailConfigured ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={emailBusy || emailCooldown.running || emailCodeSent}
-                  onClick={() => void startEmailEnableSend()}
-                >
-                  {emailCooldown.running
-                    ? t("common.resendIn", { seconds: emailCooldown.seconds })
-                    : t("settings.security.emailEnable")}
-                </Button>
+                emailCodeSent ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEmailCodeSent(false)
+                      setEmailCode("")
+                      setEmailError("")
+                    }}
+                  >
+                    {t("common.actions.cancel")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={emailBusy || emailCooldown.running}
+                    onClick={() => void startEmailEnableSend()}
+                  >
+                    {emailCooldown.running
+                      ? t("common.resendIn", {
+                          seconds: emailCooldown.seconds
+                        })
+                      : t("settings.security.emailEnable")}
+                  </Button>
+                )
               ) : null}
             </div>
 
             {errorLine(emailError)}
 
-            {!emailEnabled && emailConfigured && emailCodeSent ? (
-              <form
-                className="space-y-3 border-t pt-2"
-                onSubmit={confirmEmailEnable}
-              >
+            {emailConfigured && emailCodeSent && !emailEnabled ? (
+              <form className="space-y-3 pt-2" onSubmit={confirmEmailEnable}>
                 <div className="space-y-1.5">
                   <Label htmlFor="email-enable-code">{t("common.code")}</Label>
                   <Input
@@ -403,7 +453,7 @@ export function SecuritySection() {
                     }
                   />
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2">
                   <Button type="submit" disabled={emailBusy}>
                     {t("settings.security.emailConfirm")}
                   </Button>
@@ -418,17 +468,6 @@ export function SecuritySection() {
                           seconds: emailCooldown.seconds
                         })
                       : t("common.resend")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setEmailCodeSent(false)
-                      setEmailCode("")
-                      setEmailError("")
-                    }}
-                  >
-                    {t("common.actions.cancel")}
                   </Button>
                 </div>
               </form>
@@ -449,7 +488,7 @@ export function SecuritySection() {
             {t("settings.security.passkeyUnsupported")}
           </p>
         ) : (
-          <div className="space-y-3">
+          <>
             <ul className="space-y-2 text-sm">
               {passkeys.length === 0 ? (
                 <li className="text-muted-foreground">
@@ -479,12 +518,7 @@ export function SecuritySection() {
                       type="button"
                       variant="destructive"
                       size="sm"
-                      onClick={() =>
-                        openConfirmDialog({
-                          type: "passkeyDelete",
-                          passkey
-                        })
-                      }
+                      onClick={() => openDeletePasskey(passkey)}
                     >
                       {t("settings.security.passkeyDelete")}
                     </Button>
@@ -494,37 +528,32 @@ export function SecuritySection() {
             </ul>
 
             <div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => openConfirmDialog({ type: "passkeyAdd" })}
-              >
+              <Button type="button" variant="outline" onClick={openAddPasskey}>
                 {t("settings.security.passkeyAdd")}
               </Button>
             </div>
-          </div>
+          </>
         )}
       </section>
 
       <Dialog
-        open={confirmAction !== null}
+        open={pendingAction !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            closeConfirmDialog()
-          }
+          if (!open) handleDialogClose()
         }}
       >
         <DialogContent>
-          <form className="space-y-4" onSubmit={handleConfirmSubmit}>
-            <DialogHeader>
-              <DialogTitle>
-                {t("settings.security.confirmPasswordTitle")}
-              </DialogTitle>
-              <DialogDescription>
-                {t("settings.security.confirmPasswordDescription")}
-              </DialogDescription>
-            </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingAction?.title ??
+                t("settings.security.verifyPasswordTitle")}
+            </DialogTitle>
+            {pendingAction?.description ? (
+              <DialogDescription>{pendingAction.description}</DialogDescription>
+            ) : null}
+          </DialogHeader>
 
+          <form className="space-y-4" onSubmit={handleConfirmSubmit}>
             <div className="space-y-1.5">
               <Label htmlFor="confirm-action-password">
                 {t("common.currentPassword")}
@@ -534,10 +563,9 @@ export function SecuritySection() {
                 name="current-password"
                 type="password"
                 autoComplete="current-password"
+                autoFocus
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                disabled={confirmBusy}
-                autoFocus
               />
             </div>
 
@@ -552,20 +580,18 @@ export function SecuritySection() {
                 type="button"
                 variant="outline"
                 disabled={confirmBusy}
-                onClick={closeConfirmDialog}
+                onClick={handleDialogClose}
               >
                 {t("common.actions.cancel")}
               </Button>
               <Button
                 type="submit"
-                variant={
-                  isDestructiveAction(confirmAction) ? "destructive" : "default"
-                }
+                variant={pendingAction?.destructive ? "destructive" : "default"}
                 disabled={confirmBusy}
               >
                 {confirmBusy
-                  ? t("common.actions.saving")
-                  : t("common.actions.confirm")}
+                  ? t("common.loading")
+                  : (pendingAction?.confirmText ?? t("common.actions.confirm"))}
               </Button>
             </DialogFooter>
           </form>
