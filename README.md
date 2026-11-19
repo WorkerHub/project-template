@@ -5,12 +5,12 @@
 WorkerHub 薄骨架：迁移、setup 与鉴权的最小实现。本仓是 GitHub **template repository**，供 WorkerHub 新项目作为起点一键生成，**不是**带业务的小产品——没有示例业务表，也没有业务逻辑。
 
 - **前端**：公开侧包含首页、登录、注册、找回密码与初始化页；登录后左侧为可折叠可调宽侧栏（带菱形 Logo 与「工作台」），个人资料 / 系统管理 / 设置 / 关于收在顶栏头像菜单里（首字圆头像）。支持 PWA 主屏安装与中英双语。
-- **后端**：只做项目身份单点、表前缀三态、单一 V1 账本迁移、setup 双入口、多因子鉴权（邮箱密码 + TOTP + Passkey + 邮箱第二因子）、注册审核、邮件发送（SMTP / Resend）与系统管理。
+- **后端**：只做项目身份单点、表前缀三态、单一 V1 账本迁移、部署自动升级与 setup 初始化契约、多因子鉴权（邮箱密码 + TOTP + Passkey + 邮箱第二因子）、注册审核、邮件发送（SMTP / Resend）与系统管理。
 - **模板例外**：本仓自身没有生产目标，`deploy.yml` 只保留 `workflow_dispatch`；从模板生成的新项目必须按下文「生成清单」改回自动部署。
 
 ## 界面预览
 
-以下截图取自本仓的界面（中文、亮色为主，另附暗色与移动端）。公开首页包含项目名、一句话说明与登录入口；登录后侧栏为响应式工作台，个人资料 / 系统管理 / 设置 / 关于从顶栏头像菜单进入；初始化页按数据库状态切换初始化、升级与已关闭三形态。
+以下截图取自本仓的界面（中文、亮色为主，另附暗色与移动端）。公开首页包含项目名、一句话说明与登录入口；登录后侧栏为响应式工作台，个人资料 / 系统管理 / 设置 / 关于从顶栏头像菜单进入；初始化页按数据库状态呈现初始化与已关闭形态。
 
 <p align="center">
   <img src=".github/assets/imgs/home.webp" alt="公开首页：项目名与一句话说明，下方是「登录」「注册」两个按钮，页脚显示构建版本号" width="960" />
@@ -47,14 +47,14 @@ WorkerHub 薄骨架：迁移、setup 与鉴权的最小实现。本仓是 GitHub
 - **项目身份单点**：`worker/src/config/project.ts` 集中管理展示名、仓库 / Worker 名、一句话说明与仓库地址；默认表前缀置于 `worker/src/config/defaults.json`，运行时与部署脚本共读。`pnpm check:identity` 扫描全仓，白名单外出现项目名 / slug 零残留。
 - **表前缀三态**：未配置 → 默认前缀；配置自定义值 → 规范化后使用；显式空值（CI 保留字 `none`）→ 无前缀。生效前缀必须在初始化前定死，初始化后变更由 setup 前缀冲突守卫拦下（409）。
 - **单一全量基线迁移**：单一全量基线 `schema_v1`（历史增量链路坍缩，一次建出最终形态），幂等、只进不退；账本表为 `_<生效前缀>schema_migrations`。生产库历史记录由执行器只读识别为已最新（跳过、不写库）；`worker/src/db/schema.sql` 与 `worker/src/lib/schema.ts` 逐字同步并由测试锁死。
-- **部署与升级解耦**：`deploy.yml` 只发 Worker、不跑迁移；结构变更必须等新版本部署完成（页脚 / 系统管理可见版本号）后再由管理员点「检查并升级数据库」。全新安装一步到位。
-- **setup 双入口**：`/setup` 页（凭部署密钥）与系统管理「检查并升级数据库」（凭管理员会话）调用同一个迁移 runner；`POST /api/setup` 纯升级端点只跑迁移、不建用户，密钥走 `X-Setup-Secret` 请求头，按 IP 限流。UI 永不提供删表 / 清库入口。
+- **部署自动升级**：`deploy.yml` 在 Worker 部署成功后自动调用 `/api/setup` 执行增量迁移并校验账本，数据库结构随部署自动升级，无需手动操作升级；全新安装一步到位。
+- **初始化与迁移端点**：`/setup` 页仅用于首次初始化（凭部署密钥执行初始迁移并引导创建首个用户 / 管理员，无手动升级表单）；`POST /api/setup` 纯升级端点供部署流水线自动调用及初始化使用，密钥走 `X-Setup-Secret` 请求头，按 IP 限流。UI 永不提供删表 / 清库入口。
 - **多因子鉴权**：邮箱密码 + TOTP（密码步与验证码步分开呈现）+ Passkey（WebAuthn）+ 邮箱验证码第二因子；会话 Cookie 为 `HttpOnly` + `Secure` + `SameSite=Strict`，数据库只存令牌哈希；密码连续失败锁定账号，并设 IP 级限流。
 - **注册与审核**：开放注册、默认需要管理员批准；首个注册用户自动成为管理员并直接批准。支持「注册需验证邮箱」开关。
 - **现代前端体验**：响应式侧栏（SVG 菱形 Logo、宽度自由拖拽、收起为图标栏、本地持久化）；亮 / 暗 / 自动三档主题；PWA 添加至主屏幕；中英双语（i18next，错误码驱动翻译）；版本与构建信息自动生成注入。
-- **系统管理**：邮件通道配置（SMTP / Resend）与测试邮件发送、注册与审核策略开关、用户管理（全量用户列表、行内审核批准 / 拒绝、操作菜单重置密码 / 封禁 / 提权 / 删除）、setup 页开关、数据库维护（回显生效前缀与迁移记录）。
+- **系统管理**：邮件通道配置（SMTP / Resend）与测试邮件发送、注册与审核策略开关、用户管理（全量用户列表、行内审核批准 / 拒绝、操作菜单重置密码 / 封禁 / 提权 / 删除）、数据库维护（setup 页开关与生效表前缀展示）。
 - **定时任务与 waker**：`[triggers] crons` 提供原生定时入口；接入 waker 仅需一把 `WAKER_SIGNING_KEY` Secret（未配走 Cron、配了 waker 验签接管），不设多余模式开关。
-- **CI/CD 流水线**：`ci.yml`（lint / format / typecheck / build / test / 身份校验 / 部署 dry-run）、`deploy.yml`（仅手动触发，见下）、`tag.yml`（手动打语义化版本 tag）、`release.yml`（tag 触发 GitHub Release）。
+- **CI/CD 流水线**：`ci.yml`（lint / format / typecheck / build / test / 身份校验 / 部署 dry-run）、`deploy.yml`（部署 Worker 与数据库自动迁移，仅手动触发，见下）、`tag.yml`（手动打语义化版本 tag）、`release.yml`（tag 触发 GitHub Release）。
 
 ## 技术栈
 
@@ -119,7 +119,7 @@ openssl rand -base64 32   # SIGNING_SECRET
 
 1. 打开 `/setup`，输入 `.dev.vars` 里的 `SETUP_SECRET`，点「初始化」：跑迁移，回显生效表前缀与迁移记录。
 2. 点「注册首个用户」（或打开 `/register`）建账号：首个用户自动成为管理员并直接批准。
-3. 之后 setup 页默认关闭；管理员可在「系统管理 → 数据库维护」重开页面或再次执行迁移。`/setup` 的「检查并升级」与 `POST /api/setup` 都只跑迁移，不会建用户、改密码或删数据。
+3. 之后 setup 页默认关闭；管理员可在「系统管理 → 数据库维护」重开页面。后续数据库升级由部署流水线自动调用 `POST /api/setup` 执行增量迁移；`POST /api/setup` 纯升级端点只跑迁移，不会建用户、改密码或删数据。
 
 初始化也可以直接用 curl（把 `<SETUP_SECRET>` 换成 `.dev.vars` 里的值，密钥只放请求头）：
 
@@ -200,8 +200,8 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 ### 部署流程
 
 1. 触发器：模板仓只有手动 `workflow_dispatch`（团队不运行），生成的项目按「生成清单」第 6 步改为 push main 触发自动部署。
-2. `deploy.yml` 依次：安装依赖 → `materialize-secrets`（校验、写 secrets.json、解析 wrangler.toml）→ 构建前端 → `wrangler deploy --secrets-file`。
-3. 部署本身不跑迁移。部署完成后打开 `/setup` 用部署密钥跑一次迁移（或由管理员在「系统管理 → 数据库维护」点「检查并升级数据库」）。
+2. `deploy.yml` 依次：安装依赖 → `materialize-secrets`（校验、写 secrets.json、解析 wrangler.toml）→ 构建前端 → `wrangler deploy --secrets-file` → 自动调用 `POST /api/setup` 执行数据库增量迁移并校验账本。
+3. 部署自动升级：Worker 部署成功后，`deploy.yml` 自动通过 workers.dev 路由调用 `POST /api/setup` 执行增量迁移并校验账本，无需管理员手动点击升级。新项目首次部署后打开 `/setup` 完成初始化并注册首个管理员。
 
 ## 从本模板生成新项目（生成清单）
 
@@ -252,7 +252,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
        branches: [main]
    ```
 
-7. **首次部署与初始化**：把项目推到 `main`，等 `Deploy` 跑完，再打开 `/setup` 用部署密钥跑迁移，然后注册首个用户（自动成为管理员并批准）。初始化完成后 setup 页会自动关闭；需要再开时由管理员在「系统管理 → 数据库维护」打开。
+7. **首次部署与初始化**：把项目推到 `main`，等 `Deploy` 跑完（流水线会自动部署 Worker 并执行初始数据库迁移）；随后打开 `/setup` 用部署密钥完成初始化验证，然后注册首个用户（自动成为管理员并批准）。初始化完成后 setup 页会自动关闭；需要再开时由管理员在「系统管理 → 数据库维护」打开。
 
 8. **收尾**：
    - **清掉模板专属内容**（这份 README 是模板的 README，生成项目后不改就会自相矛盾）：
