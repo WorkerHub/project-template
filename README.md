@@ -158,7 +158,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 ## 定时任务与 waker
 
-- `worker/wrangler.toml` 的 `[triggers] crons` 是唯一的原生定时入口（模板里是每天一次）；任务本身只有一个 no-op 日志与 D1 抢占示例，生成项目后往里加自己的 job。
+- `worker/wrangler.toml` 的 `[triggers] crons` 是唯一的原生定时入口（模板默认 `crons = []` 关闭，项目有真实定时任务时按需写入触发表达式）；任务本身只有一个 no-op 日志与 D1 抢占示例，生成项目后往里加自己的 job。
 - 触发方式只由 `WAKER_SIGNING_KEY` 一个变量的取值决定，没有第二个模式开关：
   - 未配置（含空值、`*_PLACEHOLDER`）→ 原生 Cron 跑；
   - `false`（小写，保留值）→ 两个入口都不跑；
