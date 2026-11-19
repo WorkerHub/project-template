@@ -62,8 +62,6 @@ jobs:
       - name: Build web
         run: pnpm build:web
 
-      # 迁移不在这里跑：部署完成后由 setup 页 / 管理面「检查并升级数据库」触发同一套 runner。
-      #
       # 版本号（§6.3）：与前端页脚同源，由 scripts/build-info.mjs 在 CI 内从 git describe 现算
       # （tag 形态 v<semver>-<提交数>-<短哈希>，无 tag 兜底 v1.0.0-<提交数>-<短哈希>）。
       # APP_VERSION 非密钥，因此走 --var 注入、与 wrangler.toml 的 [vars] TABLE_PREFIX 并存；
@@ -81,3 +79,137 @@ jobs:
           fi
           pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json" \
             --var "APP_VERSION:${APP_VERSION}"
+
+      # 数据库自动升级：Worker 部署成功后，由 CI 自动调用 /api/setup 执行增量迁移并校验账本。
+      - name: Run database migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$SETUP_SECRET" ]; then
+            echo "Missing required environment variables for database migration" >&2
+            exit 1
+          fi
+
+          WORKER_NAME=$(node -e '
+            import fs from "node:fs";
+            const toml = fs.readFileSync("worker/wrangler.toml", "utf8");
+            const m = toml.match(/^name\s*=\s*"([^"]+)"/m);
+            if (!m) { console.error("Missing name in worker/wrangler.toml"); process.exit(1); }
+            process.stdout.write(m[1]);
+          ')
+          if [ -z "$WORKER_NAME" ]; then
+            echo "Failed to resolve worker name from worker/wrangler.toml" >&2
+            exit 1
+          fi
+
+          SUBDOMAIN_RES=$(curl -sS -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json")
+          SUBDOMAIN=$(echo "$SUBDOMAIN_RES" | jq -r '.result.subdomain // empty')
+          if [ -z "$SUBDOMAIN" ]; then
+            echo "Failed to retrieve workers.dev subdomain: $(echo "$SUBDOMAIN_RES" | jq -c '.errors // .')" >&2
+            exit 1
+          fi
+
+          ROUTE_RES=$(curl -sS -X GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/subdomain" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json")
+          ENABLED=$(echo "$ROUTE_RES" | jq -r '.result.enabled // false')
+          if [ "$ENABLED" != "true" ]; then
+            echo "workers.dev route is disabled for ${WORKER_NAME}, enabling..."
+            ENABLE_RES=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/subdomain" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"enabled": true}')
+            ENABLE_SUCCESS=$(echo "$ENABLE_RES" | jq -r '.success // false')
+            if [ "$ENABLE_SUCCESS" != "true" ]; then
+              echo "Failed to enable workers.dev route for ${WORKER_NAME}: $(echo "$ENABLE_RES" | jq -c '.errors // .')" >&2
+              exit 1
+            fi
+          fi
+
+          RESP_FILE=$(mktemp)
+          DELAYS=(3 6 12 20)
+          SUCCESS=false
+
+          for ATTEMPT in 1 2 3 4 5; do
+            HTTP_STATUS=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X POST \
+              "https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev/api/setup" \
+              -H "X-Setup-Secret: ${SETUP_SECRET}" \
+              -H "Content-Type: application/json" \
+              -d '' 2>/dev/null) || HTTP_STATUS="000"
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              SUCCESS=true
+              break
+            fi
+
+            if [ "$HTTP_STATUS" = "403" ]; then
+              echo "HTTP 403: Invalid setup secret" >&2
+              exit 1
+            fi
+
+            if [ "$HTTP_STATUS" = "400" ] || [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "404" ] || [ "$HTTP_STATUS" = "409" ]; then
+              echo "HTTP ${HTTP_STATUS}: Permanent setup error: $(cat "$RESP_FILE" 2>/dev/null)" >&2
+              exit 1
+            fi
+
+            if [ "$ATTEMPT" -lt 5 ]; then
+              DELAY=${DELAYS[$((ATTEMPT - 1))]}
+              echo "Attempt ${ATTEMPT}/5 failed (HTTP ${HTTP_STATUS}), sleeping ${DELAY}s before retry..."
+              sleep "$DELAY"
+            fi
+          done
+
+          if [ "$SUCCESS" != "true" ]; then
+            echo "Migration failed after 5 attempts. Last status: HTTP ${HTTP_STATUS}" >&2
+            if [ -s "$RESP_FILE" ]; then
+              cat "$RESP_FILE" >&2
+              echo "" >&2
+            fi
+            exit 1
+          fi
+
+          echo "Active table prefix: $(jq -r '.tablePrefix' "$RESP_FILE")"
+          echo "Migration ledger summary:"
+          jq -r '.migrations[] | "  - \(.name): \(.status)"' "$RESP_FILE"
+
+          EXPECTED_MIGRATIONS=$(node -e '
+            import { registerHooks } from "node:module";
+            registerHooks({
+              resolve(specifier, context, nextResolve) {
+                try {
+                  return nextResolve(specifier, context);
+                } catch (err) {
+                  if (err.code === "ERR_MODULE_NOT_FOUND" && !specifier.endsWith(".ts")) {
+                    return nextResolve(specifier + ".ts", context);
+                  }
+                  throw err;
+                }
+              }
+            });
+            const { getMigrations } = await import("./worker/src/lib/migrations.ts");
+            process.stdout.write(JSON.stringify(getMigrations("").map(m => m.name)));
+          ')
+
+          RESP_FILE="$RESP_FILE" EXPECTED_MIGRATIONS="$EXPECTED_MIGRATIONS" node -e '
+            import fs from "node:fs";
+            const expected = JSON.parse(process.env.EXPECTED_MIGRATIONS || "[]");
+            const resp = JSON.parse(fs.readFileSync(process.env.RESP_FILE, "utf8"));
+            if (resp.success !== true) {
+              console.error("Migration validation failed: response success is not true");
+              process.exit(1);
+            }
+            const migrations = resp.migrations || [];
+            const statusByName = new Map(migrations.map(m => [m.name, m.status]));
+            for (const name of expected) {
+              const status = statusByName.get(name);
+              if (status !== "applied" && status !== "skipped") {
+                console.error(`Migration validation failed: missing expected migrations (missing ${name}, status: ${status})`);
+                process.exit(1);
+              }
+            }
+          '
+          rm -f "$RESP_FILE"

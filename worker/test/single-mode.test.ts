@@ -103,14 +103,6 @@ describe("单人档", () => {
       await request(initialized.env, "/api/me", { headers: { cookie } })
     ).json()) as { id: number }
     expect(me.id).toBeGreaterThan(0)
-
-    const maintenance = await postJson(
-      initialized.env,
-      "/api/admin/setup",
-      {},
-      { cookie }
-    )
-    expect(maintenance.status).toBe(200)
   })
 
   it("管理面不展示注册/审核开关，写入回 MODE_CONFLICT", async () => {

@@ -346,79 +346,6 @@ describe("setup：前缀冲突", () => {
   })
 })
 
-describe("管理面数据库维护（POST /api/admin/setup）", () => {
-  it("未登录 401、非管理员 403、停用用户 401", async () => {
-    const { env, db } = await initializedContext()
-    const prefix = activePrefix(env)
-
-    const anonymous = await request(env, "/api/admin/setup", {
-      method: "POST"
-    })
-    expect(anonymous.status).toBe(401)
-    expect(anonymous.headers.get("cache-control")).toBe("no-store")
-
-    const regular = await seedSession(db, prefix, { role: "user" })
-    const forbidden = await request(env, "/api/admin/setup", {
-      method: "POST",
-      headers: { cookie: regular.cookie }
-    })
-    expect(forbidden.status).toBe(403)
-
-    const disabled = await seedSession(db, prefix, {
-      role: "admin",
-      status: "disabled",
-      email: "disabled-admin@example.test"
-    })
-    const refused = await request(env, "/api/admin/setup", {
-      method: "POST",
-      headers: { cookie: disabled.cookie }
-    })
-    expect(refused.status).toBe(401)
-  })
-
-  it("管理员重跑迁移：200，回显与密钥面完全同形", async () => {
-    const adminContext = await initializedContext()
-    const adminPrefix = activePrefix(adminContext.env)
-    const admin = await seedSession(adminContext.db, adminPrefix, {
-      role: "admin"
-    })
-    const adminRes = await request(adminContext.env, "/api/admin/setup", {
-      method: "POST",
-      headers: { cookie: admin.cookie }
-    })
-    expect(adminRes.status).toBe(200)
-    const adminBody = await adminRes.json()
-
-    const secretContext = await initializedContext()
-    clearCounters(secretContext.db, activePrefix(secretContext.env))
-    const secretRes = await postSetup(secretContext.env, SECRET_HEADER)
-    expect(secretRes.status).toBe(200)
-    const secretBody = await secretRes.json()
-
-    expect(adminBody).toEqual(secretBody)
-    expect(adminBody).toEqual({
-      success: true,
-      tablePrefix: adminPrefix,
-      migrations: [{ name: "schema_v1", status: "skipped" }]
-    })
-  })
-
-  it("管理面不提供删表/清库/重初始化入口", async () => {
-    const { env, db } = await initializedContext()
-    const prefix = activePrefix(env)
-    const admin = await seedSession(db, prefix, { role: "admin" })
-
-    for (const path of ["/api/admin/database", "/api/admin/setup/reset"]) {
-      const res = await request(env, path, {
-        method: "POST",
-        headers: { cookie: admin.cookie }
-      })
-      expect(res.status).toBe(404)
-    }
-    expect(tableNames(db)).toContain(settingsTable(prefix))
-  })
-})
-
 describe("前缀解析与默认常量", () => {
   it("默认部署（未配 TABLE_PREFIX）解析出配置里的默认前缀", () => {
     expect(getTablePrefix({})).toBe(DEFAULT_PREFIX)
@@ -428,8 +355,8 @@ describe("前缀解析与默认常量", () => {
 describe("未初始化时的鉴权边界", () => {
   it("带着伪造 Cookie 访问管理面 → 401（不因缺表变成 500）", async () => {
     const { env } = makeContext()
-    const res = await request(env, "/api/admin/setup", {
-      method: "POST",
+    const res = await request(env, "/api/admin/settings", {
+      method: "GET",
       headers: { cookie: "session=forged" }
     })
     expect(res.status).toBe(401)
