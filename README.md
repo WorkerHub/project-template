@@ -158,7 +158,7 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
 
 ## 定时任务与 waker
 
-- `worker/wrangler.toml` 的 `[triggers] crons` 是唯一的原生定时入口（模板里是每天一次）；任务本身只有一个 no-op 日志与 D1 抢占示例，生成项目后往里加自己的 job。
+- `worker/wrangler.toml` 的 `[triggers] crons` 是唯一的原生定时入口（模板默认 `crons = []` 关闭，项目有真实定时任务时按需写入触发表达式）；任务本身只有一个 no-op 日志与 D1 抢占示例，生成项目后往里加自己的 job。
 - 触发方式只由 `WAKER_SIGNING_KEY` 一个变量的取值决定，没有第二个模式开关：
   - 未配置（含空值、`*_PLACEHOLDER`）→ 原生 Cron 跑；
   - `false`（小写，保留值）→ 两个入口都不跑；
@@ -260,6 +260,6 @@ pnpm check:deploy   # 先 build:web，再 wrangler deploy --dry-run（不联网�
      - 删掉「功能特性」里「**模板例外**：本仓自身没有生产目标……」这一条；
      - 删掉「部署 → 模板仓的例外」整节，「部署流程」第 1 条改成「push main 自动部署」；
      - 删掉整章「从本模板生成新项目（生成清单）」——它只对模板仓有意义；
-     - 再扫一遍其余「模板」措辞（本地开发的「模板不带示例业务数据」、定时任务的「模板里是每天一次」、密钥与数据的「模板不含示例业务表」），按本项目实际改写；「邮件模板」「Template repository」这类正常用法不在清理范围。
+     - 再扫一遍其余「模板」措辞（本地开发的「模板不带示例业务数据」、定时任务的「模板默认 `crons = []` 关闭」、密钥与数据的「模板不含示例业务表」），按本项目实际改写；「邮件模板」「Template repository」这类正常用法不在清理范围。
    - 域名在项目自己的规格里定（模板不写域名）；把 `.github/assets/imgs/` 的截图换成本项目界面（同名覆盖）并同步「界面预览」；方案版本标注随方案同步更新。
    - 改完 README 再跑一次 `pnpm format && pnpm check:identity`，最后 CI 全绿。

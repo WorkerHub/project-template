@@ -30,4 +30,4 @@ database_id = "D1_DATABASE_ID_PLACEHOLDER"
 # 关闭时只把 crons 置为空数组 `crons = []`，不要整段删除 [triggers]——Cloudflare
 # 会保留已有 cron，删掉这一段并不等于关掉触发器。
 [triggers]
-crons = ["17 3 * * *"]
+crons = []
