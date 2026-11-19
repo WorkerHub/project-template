@@ -158,12 +158,10 @@
     "title": "Setup",
     "checking": "Checking setup state…",
     "initSubtitle": "Enter the deployment secret to initialize the database.",
-    "upgradeSubtitle": "Enter the deployment secret to check and upgrade the database.",
     "closedTitle": "Setup page is closed",
     "closedBody": "An admin can re-open it under System.",
     "secret": "Deployment secret",
     "submitInit": "Initialize",
-    "submitUpgrade": "Check and upgrade",
     "doneTitle": "Database is ready",
     "tablePrefix": "Effective table prefix",
     "noPrefix": "No prefix",
@@ -364,13 +362,7 @@
       "title": "Database",
       "setupPage": "Open the setup page",
       "setupPageHint": "This only gates the page; the endpoint still requires the deployment secret.",
-      "tablePrefix": "Effective table prefix",
-      "run": "Check and upgrade database",
-      "running": "Running…",
-      "done": "Migrations complete",
-      "migrations": "Migrations",
-      "applied": "Applied",
-      "skipped": "Skipped"
+      "tablePrefix": "Effective table prefix"
     }
   }
 }

@@ -38,8 +38,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       disableUser: vi.fn(),
       enableUser: vi.fn(),
       changeUserRole: vi.fn(),
-      deleteUser: vi.fn(),
-      runSetup: vi.fn()
+      deleteUser: vi.fn()
     },
     meApi: { ...actual.meApi, get: vi.fn(), update: vi.fn() }
   }
@@ -277,25 +276,6 @@ describe("系统管理", () => {
     await user.click(await screen.findByRole("tab", { name: "用户管理" }))
 
     expect(await screen.findByRole("alert")).toHaveTextContent("操作失败")
-  })
-
-  it("数据库维护回显生效前缀与迁移结果", async () => {
-    vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
-    vi.mocked(adminApi.runSetup).mockResolvedValue({
-      success: true,
-      tablePrefix: "template_",
-      migrations: [{ name: "schema_v1", status: "skipped" }]
-    })
-
-    const user = userEvent.setup()
-    renderAdmin()
-    await user.click(await screen.findByRole("tab", { name: "数据库维护" }))
-    await screen.findByRole("button", { name: "检查并升级数据库" })
-    await user.click(screen.getByRole("button", { name: "检查并升级数据库" }))
-
-    expect(await screen.findByText("迁移完成")).toBeInTheDocument()
-    expect(screen.getAllByText("template_").length).toBeGreaterThan(0)
-    expect(screen.getByText("已跳过")).toBeInTheDocument()
   })
 
   it("昵称锁定开关只提交被切换的字段", async () => {

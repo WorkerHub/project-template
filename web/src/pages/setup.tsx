@@ -19,11 +19,11 @@ import { useSiteStore } from "@/stores/site"
  *
  * 三种形态：
  * - 还没有 owner（未初始化）：初始化形态（防自锁——页面开关关着也放行）；
- * - 已初始化且页面开启：升级形态，只跑幂等迁移；
- * - 已初始化且页面关闭：只显示提示，DOM 里没有密钥表单。
+ * - 已初始化且页面关闭：只显示关闭提示；
+ * - 已初始化且页面开启：无表单、无提示（升级入口已移除）。
  *
  * 密钥只走 `X-Setup-Secret` 请求头，输入框 id/name 固定 `setup-secret`、
- * autocomplete 关闭、提交后立即清空；两种形态用不同 `key` 强制换 DOM 节点。
+ * autocomplete 关闭、提交后立即清空。
  */
 export function SetupPage() {
   const { t } = useTranslation()
@@ -157,13 +157,7 @@ export function SetupPage() {
           {t("setup.title")}
         </span>
       }
-      subtitle={
-        closed
-          ? undefined
-          : initialized
-            ? t("setup.upgradeSubtitle")
-            : t("setup.initSubtitle")
-      }
+      subtitle={initialized ? undefined : t("setup.initSubtitle")}
     >
       <div className="space-y-4">
         {closed ? (
@@ -176,10 +170,10 @@ export function SetupPage() {
           </div>
         ) : null}
 
-        {!closed && !result ? (
+        {!initialized && !result ? (
           <form
-            key={initialized ? "setup-upgrade" : "setup-init"}
-            id={initialized ? "setup-upgrade" : "setup-init"}
+            key="setup-init"
+            id="setup-init"
             className="space-y-4"
             onSubmit={submitSecret}
           >
@@ -198,11 +192,7 @@ export function SetupPage() {
             {message(error)}
 
             <Button type="submit" className="w-full" disabled={busy}>
-              {busy
-                ? t("common.loading")
-                : initialized
-                  ? t("setup.submitUpgrade")
-                  : t("setup.submitInit")}
+              {busy ? t("common.loading") : t("setup.submitInit")}
             </Button>
           </form>
         ) : null}
