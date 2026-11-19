@@ -158,12 +158,10 @@
     "title": "初始化",
     "checking": "正在检查初始化状态…",
     "initSubtitle": "输入部署密钥以初始化数据库。",
-    "upgradeSubtitle": "输入部署密钥以检查并升级数据库。",
     "closedTitle": "初始化页面已关闭",
     "closedBody": "管理员可在系统管理中重新开启。",
     "secret": "部署密钥",
     "submitInit": "初始化",
-    "submitUpgrade": "检查并升级",
     "doneTitle": "数据库已就绪",
     "tablePrefix": "生效表前缀",
     "noPrefix": "无前缀",
@@ -364,13 +362,7 @@
       "title": "数据库维护",
       "setupPage": "开放初始化页面",
       "setupPageHint": "只控制页面入口，接口仍需部署密钥。",
-      "tablePrefix": "生效表前缀",
-      "run": "检查并升级数据库",
-      "running": "正在执行…",
-      "done": "迁移完成",
-      "migrations": "迁移记录",
-      "applied": "已执行",
-      "skipped": "已跳过"
+      "tablePrefix": "生效表前缀"
     }
   }
 }

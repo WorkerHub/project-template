@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -38,7 +38,7 @@ beforeEach(() => {
   vi.mocked(setupApi.state).mockResolvedValue(setupState())
 })
 
-describe("初始化页三形态（规格 §5.3）", () => {
+describe("初始化页形态（规格 §5.3）", () => {
   it("未初始化：密钥框属性合规，成功回显生效前缀与迁移", async () => {
     useSetupStore.setState({ state: setupState(), loaded: true })
     vi.mocked(setupApi.run).mockResolvedValue({
@@ -64,41 +64,16 @@ describe("初始化页三形态（规格 §5.3）", () => {
     expect(setupApi.run).toHaveBeenCalledWith("deployment-secret")
   })
 
-  it("已初始化 + 页面关闭：不渲染密钥表单", () => {
+  it("已初始化：只显示关闭提示，不提供升级表单", () => {
     useSetupStore.setState({
-      state: setupState({ ownerExists: true, enabled: false }),
+      state: setupState({ ownerExists: true, enabled: true }),
       loaded: true
     })
     renderSetup()
 
     expect(screen.getByText("初始化页面已关闭")).toBeInTheDocument()
     expect(document.getElementById("setup-secret")).toBeNull()
-  })
-
-  it("已初始化 + 页面开启：升级形态，换形态时 DOM 节点不复用", async () => {
-    useSetupStore.setState({ state: setupState(), loaded: true })
-    renderSetup()
-
-    const initForm = document.getElementById("setup-init")
-    const initSecret = screen.getByLabelText("部署密钥")
-    expect(initForm).not.toBeNull()
-
-    act(() => {
-      useSetupStore.setState({
-        state: setupState({ ownerExists: true, enabled: true }),
-        loaded: true
-      })
-    })
-
-    await waitFor(() =>
-      expect(document.getElementById("setup-upgrade")).not.toBeNull()
-    )
-    const upgradeForm = document.getElementById("setup-upgrade")
-    const upgradeSecret = screen.getByLabelText("部署密钥")
-    expect(upgradeForm).not.toBe(initForm)
-    expect(upgradeSecret).not.toBe(initSecret)
-    expect(initForm?.isConnected).toBe(false)
-    expect(initSecret.isConnected).toBe(false)
+    expect(document.getElementById("setup-upgrade")).toBeNull()
   })
 
   it("密钥错误时清空输入并给出可翻译提示", async () => {
