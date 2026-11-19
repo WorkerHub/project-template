@@ -17,9 +17,10 @@ import { useSiteStore } from "@/stores/site"
 /**
  * 初始化页（规格 §5.3、§5.3.7；技术方案 §5A.6）。
  *
- * 两种形态：
+ * 三种形态：
  * - 还没有 owner（未初始化）：初始化形态（防自锁——页面开关关着也放行）；
- * - 已初始化：只显示关闭提示，DOM 里没有密钥表单。
+ * - 已初始化且页面关闭：只显示关闭提示；
+ * - 已初始化且页面开启：无表单、无提示（升级入口已移除）。
  *
  * 密钥只走 `X-Setup-Secret` 请求头，输入框 id/name 固定 `setup-secret`、
  * autocomplete 关闭、提交后立即清空。
@@ -54,7 +55,8 @@ export function SetupPage() {
     )
   }
 
-  const closed = state.ownerExists
+  const initialized = state.ownerExists
+  const closed = initialized && !state.enabled
   const ownerNeeded = singleMode && result !== null && !state.ownerExists
 
   const submitSecret = async (event: React.FormEvent) => {
@@ -155,7 +157,7 @@ export function SetupPage() {
           {t("setup.title")}
         </span>
       }
-      subtitle={closed ? undefined : t("setup.initSubtitle")}
+      subtitle={initialized ? undefined : t("setup.initSubtitle")}
     >
       <div className="space-y-4">
         {closed ? (
@@ -168,7 +170,7 @@ export function SetupPage() {
           </div>
         ) : null}
 
-        {!closed && !result ? (
+        {!initialized && !result ? (
           <form
             key="setup-init"
             id="setup-init"

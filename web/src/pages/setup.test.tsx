@@ -64,14 +64,26 @@ describe("初始化页形态（规格 §5.3）", () => {
     expect(setupApi.run).toHaveBeenCalledWith("deployment-secret")
   })
 
-  it("已初始化：只显示关闭提示，不提供升级表单", () => {
+  it("已初始化 + 页面关闭：只显示关闭提示，不提供升级表单", () => {
+    useSetupStore.setState({
+      state: setupState({ ownerExists: true, enabled: false }),
+      loaded: true
+    })
+    renderSetup()
+
+    expect(screen.getByText("初始化页面已关闭")).toBeInTheDocument()
+    expect(document.getElementById("setup-secret")).toBeNull()
+    expect(document.getElementById("setup-upgrade")).toBeNull()
+  })
+
+  it("已初始化 + 页面开启：无表单、无升级表单", () => {
     useSetupStore.setState({
       state: setupState({ ownerExists: true, enabled: true }),
       loaded: true
     })
     renderSetup()
 
-    expect(screen.getByText("初始化页面已关闭")).toBeInTheDocument()
+    expect(screen.queryByText("初始化页面已关闭")).not.toBeInTheDocument()
     expect(document.getElementById("setup-secret")).toBeNull()
     expect(document.getElementById("setup-upgrade")).toBeNull()
   })
