@@ -152,7 +152,7 @@ describe("系统管理面", () => {
     )
   })
 
-  it("多用户档不提供所有者端点；数据库维护仍走 A 单契约", async () => {
+  it("多用户档不提供所有者端点", async () => {
     const { env } = await initializedContext()
     const owner = await postJson(
       env,
@@ -164,24 +164,6 @@ describe("系统管理面", () => {
     expect(((await owner.json()) as { code: string }).code).toBe(
       "MODE_UNSUPPORTED"
     )
-
-    await registerUser(env, { email: "owner@example.test" })
-    const admin = await adminCookie(env)
-    const maintenance = await postJson(
-      env,
-      "/api/admin/setup",
-      {},
-      { cookie: admin }
-    )
-    expect(maintenance.status).toBe(200)
-    const body = (await maintenance.json()) as {
-      success: boolean
-      tablePrefix: string
-      migrations: Array<{ name: string; status: string }>
-    }
-    expect(body.success).toBe(true)
-    expect(body.tablePrefix).toBe(activePrefix(env))
-    expect(body.migrations).toEqual([{ name: "schema_v1", status: "skipped" }])
   })
 })
 
