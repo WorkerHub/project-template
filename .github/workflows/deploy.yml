@@ -130,51 +130,52 @@ jobs:
             fi
           fi
 
-          RESP_FILE=$(mktemp)
-          DELAYS=(3 6 12 20)
-          SUCCESS=false
-
-          for ATTEMPT in 1 2 3 4 5; do
-            HTTP_STATUS=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X POST \
-              "https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev/api/setup" \
-              -H "X-Setup-Secret: ${SETUP_SECRET}" \
-              -H "Content-Type: application/json" \
-              -d '' 2>/dev/null) || HTTP_STATUS="000"
-
-            if [ "$HTTP_STATUS" = "200" ]; then
-              SUCCESS=true
-              break
-            fi
-
-            if [ "$HTTP_STATUS" = "403" ]; then
-              echo "HTTP 403: Invalid setup secret" >&2
-              exit 1
-            fi
-
-            if [ "$HTTP_STATUS" = "400" ] || [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "404" ] || [ "$HTTP_STATUS" = "409" ]; then
-              echo "HTTP ${HTTP_STATUS}: Permanent setup error: $(cat "$RESP_FILE" 2>/dev/null)" >&2
-              exit 1
-            fi
-
-            if [ "$ATTEMPT" -lt 5 ]; then
-              DELAY=${DELAYS[$((ATTEMPT - 1))]}
-              echo "Attempt ${ATTEMPT}/5 failed (HTTP ${HTTP_STATUS}), sleeping ${DELAY}s before retry..."
-              sleep "$DELAY"
-            fi
-          done
-
-          if [ "$SUCCESS" != "true" ]; then
-            echo "Migration failed after 5 attempts. Last status: HTTP ${HTTP_STATUS}" >&2
-            if [ -s "$RESP_FILE" ]; then
-              cat "$RESP_FILE" >&2
-              echo "" >&2
-            fi
+          APP_VERSION=$(node scripts/build-info.mjs --print)
+          if [ "${APP_VERSION##*-}" = "unknown" ]; then
+            echo "APP_VERSION 无法从 git describe 解析：${APP_VERSION}" >&2
             exit 1
           fi
 
-          echo "Active table prefix: $(jq -r '.tablePrefix' "$RESP_FILE")"
-          echo "Migration ledger summary:"
-          jq -r '.migrations[] | "  - \(.name): \(.status)"' "$RESP_FILE"
+          DELAYS=(3 6 12 20)
+
+          verify_version() {
+            local PHASE="$1"
+            local VER_FILE
+            VER_FILE=$(mktemp)
+            local V_HTTP_STATUS=""
+            local V_VERSION=""
+            local V_OK=false
+
+            for V_ATTEMPT in 1 2 3 4 5; do
+              V_HTTP_STATUS=$(curl -sS -o "$VER_FILE" -w "%{http_code}" \
+                "https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev/api/public?t=$(date +%s)" \
+                -H "Content-Type: application/json" 2>/dev/null) || V_HTTP_STATUS="000"
+
+              if [ "$V_HTTP_STATUS" = "200" ]; then
+                V_VERSION=$(jq -r '.version // empty' "$VER_FILE" 2>/dev/null || true)
+                echo "Version check (${PHASE}) attempt ${V_ATTEMPT}/5: served=${V_VERSION:-<none>}, expected=${APP_VERSION}"
+                if [ -n "$V_VERSION" ] && [ "$V_VERSION" = "$APP_VERSION" ]; then
+                  V_OK=true
+                  break
+                fi
+              else
+                echo "Version check (${PHASE}) attempt ${V_ATTEMPT}/5: HTTP ${V_HTTP_STATUS}" >&2
+              fi
+
+              if [ "$V_ATTEMPT" -lt 5 ]; then
+                sleep "${DELAYS[$((V_ATTEMPT - 1))]}"
+              fi
+            done
+
+            rm -f "$VER_FILE"
+            if [ "$V_OK" != "true" ]; then
+              echo "Version self-verification (${PHASE}) failed: /api/public never served ${APP_VERSION} (last served=${V_VERSION:-<none>}, HTTP ${V_HTTP_STATUS})" >&2
+              exit 1
+            fi
+            echo "Version self-verification (${PHASE}) passed: /api/public serving ${APP_VERSION}"
+          }
+
+          verify_version "pre-setup"
 
           EXPECTED_MIGRATIONS=$(node -e '
             import { registerHooks } from "node:module";
@@ -194,6 +195,22 @@ jobs:
             process.stdout.write(JSON.stringify(getMigrations("").map(m => m.name)));
           ')
 
+          RESP_FILE=$(mktemp)
+          HTTP_STATUS=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X POST \
+            "https://${WORKER_NAME}.${SUBDOMAIN}.workers.dev/api/setup" \
+            -H "X-Setup-Secret: ${SETUP_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '' 2>/dev/null) || HTTP_STATUS="000"
+
+          if [ "$HTTP_STATUS" = "403" ]; then
+            echo "HTTP 403: Invalid setup secret" >&2
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "HTTP ${HTTP_STATUS}: /api/setup failed: $(cat "$RESP_FILE" 2>/dev/null)" >&2
+            exit 1
+          fi
+
           RESP_FILE="$RESP_FILE" EXPECTED_MIGRATIONS="$EXPECTED_MIGRATIONS" node -e '
             import fs from "node:fs";
             const expected = JSON.parse(process.env.EXPECTED_MIGRATIONS || "[]");
@@ -203,13 +220,32 @@ jobs:
               process.exit(1);
             }
             const migrations = resp.migrations || [];
-            const statusByName = new Map(migrations.map(m => [m.name, m.status]));
-            for (const name of expected) {
-              const status = statusByName.get(name);
-              if (status !== "applied" && status !== "skipped") {
-                console.error(`Migration validation failed: missing expected migrations (missing ${name}, status: ${status})`);
+            const seen = new Set();
+            for (const m of migrations) {
+              if (m.status !== "applied" && m.status !== "skipped") {
+                console.error(`Migration validation failed: migration "${m.name}" has invalid status "${m.status}"`);
                 process.exit(1);
               }
+              if (seen.has(m.name)) {
+                console.error(`Migration validation failed: duplicate migration "${m.name}" in response`);
+                process.exit(1);
+              }
+              seen.add(m.name);
+            }
+            const expectedSet = new Set(expected);
+            const actualSet = new Set(migrations.map(m => m.name));
+            const missing = expected.filter(n => !actualSet.has(n));
+            const extra = migrations.map(m => m.name).filter(n => !expectedSet.has(n));
+            if (missing.length > 0 || extra.length > 0) {
+              console.error(`Migration validation failed: set mismatch (missing: [${missing.join(", ")}], extra: [${extra.join(", ")}])`);
+              process.exit(1);
             }
           '
+
+          echo "Active table prefix: $(jq -r '.tablePrefix' "$RESP_FILE")"
+          echo "Migration ledger summary:"
+          jq -r '.migrations[] | "  - \(.name): \(.status)"' "$RESP_FILE"
+
+          verify_version "post-setup"
+
           rm -f "$RESP_FILE"
