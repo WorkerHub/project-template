@@ -3,7 +3,7 @@
  *
  * 键名沿用 setup 单播种的那一套（`lib/setup.ts` 的 DEFAULT_SETTINGS），本文件只负责
  * 业务语义与两个对外形状：公开引导端点（`/api/public`）与管理面设置文档
- * （`GET/PUT /api/admin/settings`）。凭据类字段一律只输出 `passwordSet` / `apiKeySet`。
+ * （`GET/PUT/PATCH /api/admin/settings`）。凭据类字段一律只输出 `passwordSet` / `apiKeySet`。
  */
 import {
   APP_MODE,
@@ -180,7 +180,7 @@ export interface AdminSettings {
   tablePrefix: string
   registration: RegistrationSettings | null
   profileLocks: ProfileLockSettings
-  setup: { pageEnabled: boolean }
+  setupPageEnabled: boolean
   email: EmailSettingsView
 }
 
@@ -192,7 +192,7 @@ export async function buildAdminSettings(env: Env): Promise<AdminSettings> {
     registration:
       APP_MODE === "multi" ? await readRegistrationSettings(env) : null,
     profileLocks: await readProfileLockSettings(env),
-    setup: { pageEnabled: await isSetupPageEnabled(env.DB, prefix) },
+    setupPageEnabled: await isSetupPageEnabled(env.DB, prefix),
     email: await readEmailSettings(env)
   }
 }

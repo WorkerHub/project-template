@@ -322,6 +322,43 @@ describe("系统管理", () => {
     })
   })
 
+  it("开放初始化页面开关：开关状态与 setupPageEnabled 返回值一致并提交扁平字段", async () => {
+    vi.mocked(adminApi.settings).mockResolvedValue(
+      adminSettings({ setupPageEnabled: true })
+    )
+    vi.mocked(adminApi.updateSettings).mockResolvedValue(
+      adminSettings({ setupPageEnabled: false })
+    )
+
+    const user = userEvent.setup()
+    renderAdmin()
+    await user.click(await screen.findByRole("tab", { name: "其他" }))
+
+    const toggle = await screen.findByRole("switch", {
+      name: /开放初始化页面/
+    })
+    expect(toggle).toBeChecked()
+
+    await user.click(toggle)
+    expect(adminApi.updateSettings).toHaveBeenCalledWith({
+      setupPageEnabled: false
+    })
+    await waitFor(() => {
+      expect(toggle).not.toBeChecked()
+    })
+
+    vi.mocked(adminApi.updateSettings).mockResolvedValue(
+      adminSettings({ setupPageEnabled: true })
+    )
+    await user.click(toggle)
+    expect(adminApi.updateSettings).toHaveBeenCalledWith({
+      setupPageEnabled: true
+    })
+    await waitFor(() => {
+      expect(toggle).toBeChecked()
+    })
+  })
+
   it("新建用户：提交邮箱与角色，成功后就地展示一次性密码，关闭即消失", async () => {
     vi.mocked(adminApi.settings).mockResolvedValue(adminSettings())
     const created = adminCreatedUser()

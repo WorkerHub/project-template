@@ -54,11 +54,11 @@ adminRoutes.get("/settings", async (c) => {
   return c.json(await buildAdminSettings(c.env))
 })
 
-adminRoutes.put("/settings", async (c) => {
+adminRoutes.on(["PUT", "PATCH"], "/settings", async (c) => {
   const body = await readJsonBody<{
     registration?: RegistrationSettingsPatch | null
     profileLocks?: ProfileLockSettingsPatch
-    setup?: { pageEnabled?: boolean }
+    setupPageEnabled?: boolean
     email?: EmailSettingsPatch
   }>(c)
   if (!body) {
@@ -97,8 +97,8 @@ adminRoutes.put("/settings", async (c) => {
     }
   }
 
-  if (body.setup?.pageEnabled !== undefined) {
-    await writeSetupPageEnabled(c.env, body.setup.pageEnabled)
+  if (body.setupPageEnabled !== undefined && body.setupPageEnabled !== null) {
+    await writeSetupPageEnabled(c.env, body.setupPageEnabled)
   }
 
   if (body.email !== undefined) {
