@@ -97,8 +97,8 @@ adminRoutes.on(["PUT", "PATCH"], "/settings", async (c) => {
     }
   }
 
-  if (body.setupPageEnabled !== undefined) {
-    await writeSetupPageEnabled(c.env, Boolean(body.setupPageEnabled))
+  if (body.setupPageEnabled !== undefined && body.setupPageEnabled !== null) {
+    await writeSetupPageEnabled(c.env, body.setupPageEnabled)
   }
 
   if (body.email !== undefined) {

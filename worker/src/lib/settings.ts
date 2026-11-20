@@ -3,7 +3,7 @@
  *
  * 键名沿用 setup 单播种的那一套（`lib/setup.ts` 的 DEFAULT_SETTINGS），本文件只负责
  * 业务语义与两个对外形状：公开引导端点（`/api/public`）与管理面设置文档
- * （`GET/PUT /api/admin/settings`）。凭据类字段一律只输出 `passwordSet` / `apiKeySet`。
+ * （`GET/PUT/PATCH /api/admin/settings`）。凭据类字段一律只输出 `passwordSet` / `apiKeySet`。
  */
 import {
   APP_MODE,
