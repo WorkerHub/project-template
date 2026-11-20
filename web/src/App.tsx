@@ -17,7 +17,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { AboutPage } from "@/pages/about"
 import { AdminPage, AdminUsersTab } from "@/pages/admin/admin-page"
 import { EmailSection } from "@/pages/admin/email-section"
-import { MaintenanceSection } from "@/pages/admin/maintenance-section"
+import { OthersSection } from "@/pages/admin/others-section"
 import { RegistrationSection } from "@/pages/admin/registration-section"
 import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
 import { LoginPage } from "@/pages/auth/login"
@@ -104,12 +104,8 @@ export const routes: RouteObject[] = [
                           },
                           { path: "users", element: <AdminUsersTab /> },
                           {
-                            path: "database",
-                            element: <MaintenanceSection />
-                          },
-                          {
-                            path: "maintenance",
-                            element: <Navigate to="/admin/database" replace />
+                            path: "others",
+                            element: <OthersSection />
                           },
                           {
                             path: "*",
