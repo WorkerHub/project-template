@@ -414,17 +414,17 @@ describe("路由与根门", () => {
     ).toBeInTheDocument()
     u4()
 
-    // 5. /admin/database 独立 URL 直达
-    const { unmount: u5 } = renderAt(routes, "/admin/database")
+    // 5. /admin/others 独立 URL 直达
+    const { unmount: u5 } = renderAt(routes, "/admin/others")
     expect(
-      await screen.findByRole("heading", { name: "数据库维护" })
+      await screen.findByRole("heading", { name: "其他" })
     ).toBeInTheDocument()
     u5()
 
-    // 6. /admin/maintenance 重定向至 /admin/database
-    const { unmount: u6 } = renderAt(routes, "/admin/maintenance")
+    // 6. 旧路径 /admin/database 与 /admin/maintenance 不留重定向，回落至首 tab /admin/email
+    const { unmount: u6 } = renderAt(routes, "/admin/database")
     expect(
-      await screen.findByRole("heading", { name: "数据库维护" })
+      await screen.findByRole("heading", { name: "邮件配置" })
     ).toBeInTheDocument()
     u6()
   })
@@ -434,8 +434,7 @@ describe("路由与根门", () => {
     expect(titleKeyFor("/admin/email")).toBe("workbench.nav.admin")
     expect(titleKeyFor("/admin/registration")).toBe("workbench.nav.admin")
     expect(titleKeyFor("/admin/users")).toBe("workbench.nav.admin")
-    expect(titleKeyFor("/admin/database")).toBe("workbench.nav.admin")
-    expect(titleKeyFor("/admin/maintenance")).toBe("workbench.nav.admin")
+    expect(titleKeyFor("/admin/others")).toBe("workbench.nav.admin")
     expect(titleKeyFor("/admin/other-subpath")).toBe("workbench.nav.admin")
 
     expect(titleKeyFor("/settings")).toBe("settings.title")

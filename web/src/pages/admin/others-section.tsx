@@ -7,11 +7,11 @@ import { describeApiError } from "@/lib/api-errors"
 import type { AdminSettings } from "@/lib/api-types"
 
 /**
- * 系统管理 · 数据库维护（规格 §5.3.5、§6.1）。
+ * 系统管理 · 其他（规格 §5.3.5、§6.1）。
  *
  * 「开放初始化页面」只门控页面，不门控密钥接口。
  */
-export function MaintenanceSection(props?: {
+export function OthersSection(props?: {
   settings?: AdminSettings
   onSaved?: (settings: AdminSettings) => void
 }) {
@@ -42,14 +42,14 @@ export function MaintenanceSection(props?: {
   return (
     <section className="space-y-4 rounded-xl border bg-card p-4">
       <h3 className="font-heading text-sm font-semibold">
-        {t("admin.maintenance.title")}
+        {t("admin.others.title")}
       </h3>
 
       <label className="flex items-center justify-between gap-4 text-sm">
         <span className="space-y-0.5">
-          <span className="block">{t("admin.maintenance.setupPage")}</span>
+          <span className="block">{t("admin.others.setupPage")}</span>
           <span className="block text-xs text-muted-foreground">
-            {t("admin.maintenance.setupPageHint")}
+            {t("admin.others.setupPageHint")}
           </span>
         </span>
         <Switch
@@ -60,7 +60,7 @@ export function MaintenanceSection(props?: {
 
       <dl className="grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
         <dt className="text-muted-foreground">
-          {t("admin.maintenance.tablePrefix")}
+          {t("admin.others.tablePrefix")}
         </dt>
         <dd className="font-mono text-xs">
           {settings.tablePrefix || t("setup.noPrefix")}

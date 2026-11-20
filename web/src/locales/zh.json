@@ -274,7 +274,7 @@
       "email": "邮件配置",
       "registration": "注册与审核",
       "users": "用户管理",
-      "maintenance": "数据库维护"
+      "others": "其他"
     },
     "email": {
       "title": "邮件配置",
@@ -358,8 +358,8 @@
         "copyFailed": "复制失败，请手动选中密码复制"
       }
     },
-    "maintenance": {
-      "title": "数据库维护",
+    "others": {
+      "title": "其他",
       "setupPage": "开放初始化页面",
       "setupPageHint": "只控制页面入口，接口仍需部署密钥。",
       "tablePrefix": "生效表前缀"

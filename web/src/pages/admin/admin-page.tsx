@@ -25,7 +25,7 @@ export function AdminUsersTab() {
 
 /**
  * 系统管理页（规格 §6.1，仅管理员）：邮件配置、注册/审核、用户列表、
- * setup 页开关与数据库维护。
+ * setup 页开关与其他。
  * 现已重构为路径段独立子路由，不使用 query 参数或页内状态切换。
  */
 export function AdminPage() {
@@ -48,8 +48,7 @@ export function AdminPage() {
   }, [load])
 
   const segments = location.pathname.split("/").filter(Boolean)
-  const currentTab =
-    segments[1] === "database" ? "maintenance" : segments[1] || "email"
+  const currentTab = segments[1] || "email"
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -77,10 +76,8 @@ export function AdminPage() {
             <TabsTrigger value="users" asChild>
               <NavLink to="/admin/users">{t("admin.tabs.users")}</NavLink>
             </TabsTrigger>
-            <TabsTrigger value="maintenance" asChild>
-              <NavLink to="/admin/database">
-                {t("admin.tabs.maintenance")}
-              </NavLink>
+            <TabsTrigger value="others" asChild>
+              <NavLink to="/admin/others">{t("admin.tabs.others")}</NavLink>
             </TabsTrigger>
           </TabsList>
 
