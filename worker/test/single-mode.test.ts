@@ -119,8 +119,9 @@ describe("单人档", () => {
 
     const view = (await (
       await request(env, "/api/admin/settings", { headers: { cookie } })
-    ).json()) as { registration: unknown; setup: { pageEnabled: boolean } }
+    ).json()) as { registration: unknown; setupPageEnabled: boolean }
     expect(view.registration).toBeNull()
+    expect(view.setupPageEnabled).toBe(false)
 
     const write = await putJson(
       env,
@@ -137,9 +138,13 @@ describe("单人档", () => {
     const setupToggle = await putJson(
       env,
       "/api/admin/settings",
-      { setup: { pageEnabled: true } },
+      { setupPageEnabled: true },
       { cookie }
     )
     expect(setupToggle.status).toBe(200)
+    const setupToggleBody = (await setupToggle.json()) as {
+      setupPageEnabled: boolean
+    }
+    expect(setupToggleBody.setupPageEnabled).toBe(true)
   })
 })

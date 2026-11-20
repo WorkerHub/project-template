@@ -9,6 +9,7 @@ import {
   cookieFrom,
   initializedContext,
   loginUser,
+  patchJson,
   postJson,
   putJson,
   registerUser,
@@ -68,7 +69,8 @@ describe("系统管理面", () => {
         approvalRequired: boolean
         emailVerificationRequired: boolean
       }
-      setup: { pageEnabled: boolean }
+      setupPageEnabled: boolean
+      setup?: unknown
       email: {
         provider: string
         configured: boolean
@@ -83,7 +85,8 @@ describe("系统管理面", () => {
       approvalRequired: true,
       emailVerificationRequired: false
     })
-    expect(body.setup.pageEnabled).toBe(false)
+    expect(body.setupPageEnabled).toBe(false)
+    expect(body.setup).toBeUndefined()
     expect(body.email.provider).toBe("none")
     expect(body.email.configured).toBe(false)
     expect(body.email.smtp.passwordSet).toBe(false)
@@ -92,33 +95,92 @@ describe("系统管理面", () => {
     expect(raw).not.toContain("api_key")
   })
 
-  it("PUT 设置：setup 页面开合即时反映到 /api/setup/state", async () => {
+  it("PATCH/PUT 设置：setup 页面开合契约往返与 /api/setup/state 同步", async () => {
     const { env } = await initializedContext()
     await registerUser(env, { email: "owner@example.test" })
     const admin = await adminCookie(env)
 
-    const open = await putJson(
-      env,
-      "/api/admin/settings",
-      { setup: { pageEnabled: true } },
-      { cookie: admin }
-    )
-    expect(open.status).toBe(200)
-    const state = (await (await request(env, "/api/setup/state")).json()) as {
-      enabled: boolean
+    // 初始状态 setupPageEnabled 为 false，且无嵌套 setup 对象
+    const initialRes = await request(env, "/api/admin/settings", {
+      headers: { cookie: admin }
+    })
+    const initialBody = (await initialRes.json()) as {
+      setupPageEnabled: boolean
+      setup?: unknown
     }
-    expect(state.enabled).toBe(true)
+    expect(initialBody.setupPageEnabled).toBe(false)
+    expect(initialBody.setup).toBeUndefined()
 
-    await putJson(
+    // 1. PATCH 设 setupPageEnabled: true 后返回 true，后续 GET 返回 true
+    const openPatch = await patchJson(
       env,
       "/api/admin/settings",
-      { setup: { pageEnabled: false } },
+      { setupPageEnabled: true },
       { cookie: admin }
     )
-    const closed = (await (await request(env, "/api/setup/state")).json()) as {
+    expect(openPatch.status).toBe(200)
+    const openPatchBody = (await openPatch.json()) as {
+      setupPageEnabled: boolean
+      setup?: unknown
+    }
+    expect(openPatchBody.setupPageEnabled).toBe(true)
+    expect(openPatchBody.setup).toBeUndefined()
+
+    const getAfterOpen = (await (
+      await request(env, "/api/admin/settings", { headers: { cookie: admin } })
+    ).json()) as { setupPageEnabled: boolean; setup?: unknown }
+    expect(getAfterOpen.setupPageEnabled).toBe(true)
+    expect(getAfterOpen.setup).toBeUndefined()
+
+    const stateOpen = (await (
+      await request(env, "/api/setup/state")
+    ).json()) as {
       enabled: boolean
     }
-    expect(closed.enabled).toBe(false)
+    expect(stateOpen.enabled).toBe(true)
+
+    // 2. PATCH 设 setupPageEnabled: false 后返回 false，后续 GET 返回 false
+    const closePatch = await patchJson(
+      env,
+      "/api/admin/settings",
+      { setupPageEnabled: false },
+      { cookie: admin }
+    )
+    expect(closePatch.status).toBe(200)
+    const closePatchBody = (await closePatch.json()) as {
+      setupPageEnabled: boolean
+      setup?: unknown
+    }
+    expect(closePatchBody.setupPageEnabled).toBe(false)
+    expect(closePatchBody.setup).toBeUndefined()
+
+    const getAfterClose = (await (
+      await request(env, "/api/admin/settings", { headers: { cookie: admin } })
+    ).json()) as { setupPageEnabled: boolean; setup?: unknown }
+    expect(getAfterClose.setupPageEnabled).toBe(false)
+    expect(getAfterClose.setup).toBeUndefined()
+
+    const stateClosed = (await (
+      await request(env, "/api/setup/state")
+    ).json()) as {
+      enabled: boolean
+    }
+    expect(stateClosed.enabled).toBe(false)
+
+    // 3. PUT 设 setupPageEnabled: true 契约一致
+    const openPut = await putJson(
+      env,
+      "/api/admin/settings",
+      { setupPageEnabled: true },
+      { cookie: admin }
+    )
+    expect(openPut.status).toBe(200)
+    const openPutBody = (await openPut.json()) as {
+      setupPageEnabled: boolean
+      setup?: unknown
+    }
+    expect(openPutBody.setupPageEnabled).toBe(true)
+    expect(openPutBody.setup).toBeUndefined()
   })
 
   it("批准/拒绝的边界：不存在 404、非待批准 409", async () => {

@@ -180,7 +180,7 @@ export interface AdminSettings {
   tablePrefix: string
   registration: RegistrationSettings | null
   profileLocks: ProfileLockSettings
-  setup: { pageEnabled: boolean }
+  setupPageEnabled: boolean
   email: EmailSettingsView
 }
 
@@ -192,7 +192,7 @@ export async function buildAdminSettings(env: Env): Promise<AdminSettings> {
     registration:
       APP_MODE === "multi" ? await readRegistrationSettings(env) : null,
     profileLocks: await readProfileLockSettings(env),
-    setup: { pageEnabled: await isSetupPageEnabled(env.DB, prefix) },
+    setupPageEnabled: await isSetupPageEnabled(env.DB, prefix),
     email: await readEmailSettings(env)
   }
 }
