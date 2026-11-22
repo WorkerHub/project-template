@@ -17,7 +17,7 @@ export interface Env {
    * scripts/materialize-secrets.mjs 校验，缺失则不生成 secrets.json。
    */
   SIGNING_SECRET?: string
-  /** waker 接入的唯一开关（三态，见 core/waker-gate.ts）：不配 → 原生 Cron。 */
+  /** 定时任务三态调度开关（tech-scheme §8，见 core/waker-gate.ts）：不配 → 官方 Cron；配 key → waker；false → 显式关闭。 */
   WAKER_SIGNING_KEY?: string
   /** 构建期注入的版本号（§6.3），只经 /api/public 暴露；不写死在前端。 */
   APP_VERSION?: string

@@ -1,12 +1,15 @@
 /**
- * waker 接入的唯一开关（规格 §5.5A、§8）：只认 `WAKER_SIGNING_KEY` 的取值，
- * 不设模式变量。
+ * 定时任务调度形态的唯一开关（tech-scheme §8）：只认 `WAKER_SIGNING_KEY` 的取值，
+ * 不设任何模式变量。
  *
- * 三态判定（唯一判定处，`scheduled()` 与回调口都从这里取）：
- *   - `unconfigured`（未配置）→ 内置 Cron 跑定时任务；回调口失败关闭；
+ * 部署期：由 scripts/materialize-secrets.mjs 按三态物化 wrangler.toml 的 [triggers] crons
+ * （未配置且声明了 CRON_SCHEDULE 时写入表达式走官方 Cron，其余情形 crons 恒为 []）。
+ *
+ * 运行期三态判定（唯一判定处，`scheduled()` 与回调口都从这里取，作为双保险与防误触发兜底）：
+ *   - `unconfigured`（未配置）→ 官方 Cron 触发时执行定时任务；回调口失败关闭；
  *   - `disabled`（显式关闭，保留值小写 `false`）→ 两个入口都不自动跑，
  *     `scheduled()` 跳过且不回落 Cron；回调口同样失败关闭；
- *   - `configured`（已配置）→ waker 回调接管，`scheduled()` 自行跳过。
+ *   - `configured`（已配置）→ waker 回调验签接管，`scheduled()` 自行跳过让路。
  *
  * 「未配置」的口径与 setup 密钥一致：非字符串、trim 后为空、或仍是
  * `*_PLACEHOLDER` 模板值。保留值只认小写 `false`，且绝不作为验签钥使用。
