@@ -1,5 +1,5 @@
 /**
- * waker 回调入口（规格 §5.5A）：`POST /_waker/execute`。
+ * waker 回调入口（tech-scheme §8）：`POST /_waker/execute`。
  *
  * 走签名头而不是会话（不是 `/api/*`，不走会话中间件）；验签失败一律拒绝，
  * 签名钥未配置、或显式为保留值 `false` 时失败关闭（500 `signing_key_missing`）。
