@@ -1,5 +1,5 @@
 /**
- * 规格 §5.5A（定时任务桩 + waker 双模式骨架）：
+ * tech-scheme §8（定时任务桩 + waker 三态调度）：
  * - 唯一开关 `WAKER_SIGNING_KEY` 的三态：未配置 / `false` / 已配置；
  * - 已配置 → 原生 `scheduled()` 让路，回调验签后执行；
  * - 验签（HMAC-SHA256、300 秒窗）、未知任务、ids 不一致都被拒；

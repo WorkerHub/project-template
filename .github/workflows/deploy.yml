@@ -43,7 +43,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 资源 ID 只经 secrets.* 引用（GitHub 自动掩码），不另加掩码步骤；
-      # D1_DATABASE_NAME / TABLE_PREFIX 是明文 variables。
+      # D1_DATABASE_NAME / TABLE_PREFIX / CRON_SCHEDULE 是明文 variables。
       # 逐键非空校验在脚本里：缺任一把即退出 1，不写 secrets.json，绝不带空值或占位值上线。
       # 放在构建之前：配置不全就不值得先花时间构建产物。
       - name: Materialize secrets + wrangler config
@@ -56,6 +56,7 @@ jobs:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
           D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
           TABLE_PREFIX: ${{ vars.TABLE_PREFIX }}
+          CRON_SCHEDULE: ${{ vars.CRON_SCHEDULE }}
         run: node scripts/materialize-secrets.mjs
 
       # 前端构建产物与 Worker 同一部署单元（wrangler.toml 的 [assets] 指向 ../web/dist）。

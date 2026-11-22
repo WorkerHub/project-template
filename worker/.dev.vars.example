@@ -20,7 +20,9 @@ SIGNING_SECRET=SIGNING_SECRET_PLACEHOLDER
 # .dev.vars 不经过它——本地要无前缀就写空值（TABLE_PREFIX=）。
 # TABLE_PREFIX=template
 #
-# WAKER_SIGNING_KEY（可选，密钥）：定时任务触发方式的唯一开关（三态）。
-# 不配 → Worker 自带 Cron 跑定时任务；配 waker 给的 key → 改由 waker 回调触发；
-# 配保留值 false → 显式关闭自动触发。只写进 GitHub Secrets、不要进仓库。
+# WAKER_SIGNING_KEY（可选，密钥）：定时任务调度形态的唯一开关（三态，tech-scheme §8）。
+# 不配 → 部署期物化 CRON_SCHEDULE 走官方 Cron（未声明 CRON_SCHEDULE 则无调度）；
+# 配 waker 给的 key → 改由 waker 回调触发（部署期 crons 物化为 []，Cron 入口跳过让路）；
+# 配保留值 false → 显式关闭自动触发（部署期 crons 物化为 []，两个入口均不执行且不回落）。
+# 线上只写进 GitHub Secrets、不要进仓库。
 # WAKER_SIGNING_KEY=

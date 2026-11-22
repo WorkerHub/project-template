@@ -2,9 +2,9 @@
  * 部署前置脚本（scripts/materialize-secrets.mjs）的端到端测试：在临时目录里复制
  * 一份真实脚本 + wrangler.toml 再跑，不碰仓库里的文件。
  *
- * 覆盖：TABLE_PREFIX 三态注入、secrets.json 的 0600 与运行时两把钥、可选
- * WAKER_SIGNING_KEY 的三态，以及"缺键 / 空值 / 占位值 / 占位符残留 / 非法前缀
- * 一律中止且不留半成品、日志不含任何配置值"。
+ * 覆盖：TABLE_PREFIX 三态注入、[triggers] crons 三态物化、secrets.json 的 0600 与运行时两把钥、
+ * 可选 WAKER_SIGNING_KEY 的三态，以及"缺键 / 空值 / 占位值 / 占位符残留 / 非法前缀 / 非法 CRON_SCHEDULE
+ * 一律中止且不留半成品、日志不含任何配置值、幂等重跑"。
  */
 import { spawnSync } from "node:child_process"
 import {
@@ -111,6 +111,12 @@ function exists(filePath: string): boolean {
 
 const varsBlock = (toml: string) =>
   toml.match(/\[vars\]\nTABLE_PREFIX = (.*)\n/)?.[1]
+
+const cronsBlock = (toml: string): string[] | null => {
+  const match = toml.match(/\[triggers\]\s*\n\s*crons\s*=\s*(\[[^\]]*\])/)
+  if (!match) return null
+  return JSON.parse(match[1]) as string[]
+}
 
 const secretKeys = (secretsPath: string): string[] =>
   Object.keys(JSON.parse(readFileSync(secretsPath, "utf8")) as object)
@@ -342,5 +348,115 @@ describe("materialize-secrets：可选的 WAKER_SIGNING_KEY", () => {
     >
     expect(secrets.WAKER_SIGNING_KEY).toBe("false")
     expect(res.stdout).toContain("WAKER_SIGNING_KEY: 已关闭")
+  })
+})
+
+describe("materialize-secrets：[triggers] crons 三态物化", () => {
+  it("组合 1：未配置 WAKER_SIGNING_KEY 且声明了 CRON_SCHEDULE → 写入 crons 走官方 Cron", () => {
+    const res = runScript(makeSandbox(), {
+      ...VALID_ENV,
+      CRON_SCHEDULE: "0 0 * * *, */15 * * * *"
+    })
+
+    expect(res.status).toBe(0)
+    expect(cronsBlock(res.toml)).toEqual(["0 0 * * *", "*/15 * * * *"])
+    expect(res.stdout).toContain("crons 已物化（形态：官方 Cron，2 条）")
+  })
+
+  it("组合 2：未配置 WAKER_SIGNING_KEY 且未声明 CRON_SCHEDULE → 物化为 crons = []（无调度）", () => {
+    for (const emptySchedule of [undefined, "", "   "]) {
+      const res = runScript(makeSandbox(), {
+        ...VALID_ENV,
+        CRON_SCHEDULE: emptySchedule
+      })
+
+      expect(res.status).toBe(0)
+      expect(cronsBlock(res.toml)).toEqual([])
+      expect(res.stdout).toContain("crons 已物化（形态：无调度，0 条）")
+    }
+  })
+
+  it("组合 3：已配置 WAKER_SIGNING_KEY（真值）无论是否声明 CRON_SCHEDULE → crons = [] 走 waker 接管", () => {
+    for (const schedule of [undefined, "0 0 * * *"]) {
+      const res = runScript(makeSandbox(), {
+        ...VALID_ENV,
+        WAKER_SIGNING_KEY: "waker-secret-key-123",
+        CRON_SCHEDULE: schedule
+      })
+
+      expect(res.status).toBe(0)
+      expect(cronsBlock(res.toml)).toEqual([])
+      expect(res.stdout).toContain("crons 已物化（形态：waker，0 条）")
+    }
+  })
+
+  it("组合 4：WAKER_SIGNING_KEY 为 false（显式关闭）无论是否声明 CRON_SCHEDULE → crons = []（无调度）", () => {
+    for (const schedule of [undefined, "0 0 * * *"]) {
+      const res = runScript(makeSandbox(), {
+        ...VALID_ENV,
+        WAKER_SIGNING_KEY: "false",
+        CRON_SCHEDULE: schedule
+      })
+
+      expect(res.status).toBe(0)
+      expect(cronsBlock(res.toml)).toEqual([])
+      expect(res.stdout).toContain("crons 已物化（形态：无调度，0 条）")
+    }
+  })
+
+  it("CRON_SCHEDULE 格式非法（空条目、占位值、字段数不符）→ fail-closed 退出 1、不改 toml、不生成 secrets.json", () => {
+    const invalidSchedules = [
+      ",0 0 * * *",
+      "0 0 * * *,,*/5 * * * *",
+      "0 0 * * *,   ",
+      "CRON_SCHEDULE_PLACEHOLDER",
+      "0 0 * * *, replace-with-cron",
+      "*/5 * * *", // 4 段
+      "0 0 1 1 * 2026" // 6 段
+    ]
+
+    for (const badSchedule of invalidSchedules) {
+      const dir = makeSandbox()
+      const res = runScript(dir, {
+        ...VALID_ENV,
+        CRON_SCHEDULE: badSchedule
+      })
+
+      expect(res.status).toBe(1)
+      expect(res.stderr).toContain("CRON_SCHEDULE")
+      expect(res.toml).toBe(wranglerToml)
+      expect(exists(res.secretsPath)).toBe(false)
+    }
+  })
+
+  it("物化幂等：同一目录下重复运行多次，不叠加 [triggers] 与 [vars]，输出稳定", () => {
+    const dir = makeSandbox()
+    const envWithCron = {
+      ...VALID_ENV,
+      CRON_SCHEDULE: "0 0 * * *, */30 * * * *"
+    }
+
+    const first = runScript(dir, envWithCron)
+    expect(first.status).toBe(0)
+    expect(cronsBlock(first.toml)).toEqual(["0 0 * * *", "*/30 * * * *"])
+
+    const second = runScript(dir, envWithCron)
+    expect(second.status).toBe(0)
+    expect(cronsBlock(second.toml)).toEqual(["0 0 * * *", "*/30 * * * *"])
+    expect(second.toml).toBe(first.toml)
+    expect(second.toml.match(/^\[triggers\]/gm)?.length).toBe(1)
+    expect(second.toml.match(/^\[vars\]/gm)?.length).toBe(1)
+
+    // 切换到 waker 接管再跑一次，验证在原有物化结果上覆盖仍幂等且无多余段
+    const third = runScript(dir, {
+      ...VALID_ENV,
+      WAKER_SIGNING_KEY: "switch-to-waker-key",
+      CRON_SCHEDULE: "0 0 * * *"
+    })
+    expect(third.status).toBe(0)
+    expect(cronsBlock(third.toml)).toEqual([])
+    expect(third.stdout).toContain("crons 已物化（形态：waker，0 条）")
+    expect(third.toml.match(/^\[triggers\]/gm)?.length).toBe(1)
+    expect(third.toml.match(/^\[vars\]/gm)?.length).toBe(1)
   })
 })

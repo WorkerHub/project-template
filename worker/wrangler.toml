@@ -25,9 +25,12 @@ database_id = "D1_DATABASE_ID_PLACEHOLDER"
 # 密钥一律走 wrangler secrets（CI: deploy --secrets-file；本地：worker/.dev.vars），
 # 见 worker/.dev.vars.example。
 
-# 定时任务桩（规格 §5.5A）：原生 Cron 只在这里定义一次。waker 接入后由
-# `WAKER_SIGNING_KEY` 的取值让路（已配置 → 跳过；`false` → 显式关闭）。
-# 关闭时只把 crons 置为空数组 `crons = []`，不要整段删除 [triggers]——Cloudflare
+# 定时任务桩（tech-scheme §8）：仓库提交的 `crons` 恒为 `[]`，不占官方槽位。
+# 表达式声明在仓库 Variable `CRON_SCHEDULE`（逗号分隔、按 UTC），由部署脚本
+# （scripts/materialize-secrets.mjs）按 `WAKER_SIGNING_KEY` 三态在部署期物化进本段：
+# - 未配置且声明了 CRON_SCHEDULE → 物化为声明的表达式（走官方 Cron）；
+# - 其余情形（真值走 waker 接管、false 显式关闭、未配置且未声明 CRON_SCHEDULE）→ 物化为 `crons = []`。
+# 仓库中保持 `[triggers] crons = []`，不要整段删除 `[triggers]`——Cloudflare
 # 会保留已有 cron，删掉这一段并不等于关掉触发器。
 [triggers]
 crons = []

@@ -123,9 +123,10 @@ app.onError((err, c) => {
 export default {
   fetch: app.fetch,
   /**
-   * 原生 Cron 入口。判定只有一个来源 `wakerGateState()`：已配置 → waker 接管；
-   * 显式关闭（`false`）→ 整体停掉、**不**回落 Cron；未配置 → 自己跑。
-   * `wrangler.toml` 的 `[triggers] crons` 保留，靠取值让路（置空只写 `crons = []`）。
+   * 原生 Cron 入口。触发器有无在部署期由 scripts/materialize-secrets.mjs 按三态物化
+   * （未配置且声明了 CRON_SCHEDULE 时才写入 crons，其余物化为 []）。
+   * 运行时仍由 `wakerGateState()` 做判定与双保险让路：已配置 → waker 接管；
+   * 显式关闭（`false`）→ 整体停掉、**不**回落 Cron；未配置 → 官方 Cron 跑。
    */
   async scheduled(
     _event: ScheduledController,
