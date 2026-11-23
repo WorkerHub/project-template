@@ -95,6 +95,22 @@ export async function findPasskeyByCredentialId(
     .first<PasskeyRow>()
 }
 
+export async function findPasskeyByCredential(
+  db: D1Database,
+  prefix: string,
+  credentialId: string
+): Promise<PasskeyRow | null> {
+  return db
+    .prepare(
+      `SELECT id, user_id, credential_id, public_key, counter, transports,
+              created_at, last_used_at
+         FROM ${passkeysTable(prefix)}
+        WHERE credential_id = ?`
+    )
+    .bind(credentialId)
+    .first<PasskeyRow>()
+}
+
 export async function insertPasskey(
   db: D1Database,
   prefix: string,

@@ -125,6 +125,7 @@ twoFactorManageRoutes.post("/passkey/register/options", async (c) => {
     rp: relyingParty(c),
     userName: user.email,
     userDisplayName: user.display_name || user.email,
+    userId: user.id,
     excludeCredentialIds: (await listPasskeys(c.env.DB, prefix, userId)).map(
       (passkey) => passkey.credential_id
     )
@@ -186,6 +187,14 @@ twoFactorManageRoutes.post("/passkey/register/verify", async (c) => {
   })
   clearChallengeCookie(c)
   if (!verdict.verified) {
+    if (verdict.reason === "challenge_mismatch") {
+      return apiError(
+        c,
+        400,
+        "PASSKEY_CHALLENGE_MISSING",
+        "No pending passkey challenge; request options again"
+      )
+    }
     return apiError(c, 400, "PASSKEY_FAILED", "Passkey registration failed")
   }
 

@@ -40,12 +40,14 @@ import {
 import {
   clearChallengeCookie,
   createAuthenticationOptions,
+  parseUserHandle,
   readChallengeCookie,
   relyingParty,
   setChallengeCookie,
   verifyAuthentication
 } from "../core/webauthn"
 import {
+  findPasskeyByCredential,
   findPasskeyByCredentialId,
   listPasskeys,
   touchPasskey
@@ -100,6 +102,10 @@ const PASSKEY_LIMIT = {
   action: "passkey_challenge",
   windowSeconds: 300,
   max: 10
+}
+const PASSKEY_CHALLENGE_USED = {
+  action: "passkey_challenge_used",
+  windowSeconds: 300
 }
 const EMAIL_2FA_SEND_LIMIT = {
   action: "email_2fa_send",
@@ -745,11 +751,226 @@ authRoutes.post("/2fa/passkey/verify", async (c) => {
   })
   clearChallengeCookie(c)
   if (!verdict.verified) {
+    if (verdict.reason === "challenge_mismatch") {
+      return apiError(
+        c,
+        400,
+        "PASSKEY_CHALLENGE_MISSING",
+        "No pending passkey challenge; request options again"
+      )
+    }
     return apiError(c, 401, "PASSKEY_FAILED", "Passkey verification failed")
   }
 
   await touchPasskey(c.env.DB, prefix, passkey.id, verdict.newCounter)
   return finishSignIn(c, stepUp.userId, stepUp.jti)
+})
+
+// ─── 通行密钥（第一因子直接登录） ──────────────────────────────────────────────
+
+authRoutes.post("/passkey/login/options", async (c) => {
+  const prefix = getTablePrefix(c.env)
+  const notReady = await requireInitialized(c, prefix)
+  if (notReady) return notReady
+
+  const secret = secretOf(c.env)
+  if (!secret) return authUnavailable(c)
+
+  const limit = await enforceRateLimit(c.env.DB, prefix, {
+    ...PASSKEY_LIMIT,
+    ip: clientIp(c)
+  })
+  if (!limit.allowed) return rateLimited(c, limit.retryAfter)
+
+  const options = await createAuthenticationOptions({
+    rp: relyingParty(c),
+    userVerification: "required"
+  })
+  await setChallengeCookie(c, secret, options.challenge, "login")
+  return c.json(options)
+})
+
+authRoutes.post("/passkey/login/verify", async (c) => {
+  const prefix = getTablePrefix(c.env)
+  const notReady = await requireInitialized(c, prefix)
+  if (notReady) return notReady
+
+  const secret = secretOf(c.env)
+  if (!secret) return authUnavailable(c)
+
+  const now = nowSeconds()
+  const ip = clientIp(c)
+
+  const challenge = await readChallengeCookie(c, secret, "login")
+  if (!challenge) {
+    return apiError(
+      c,
+      400,
+      "PASSKEY_CHALLENGE_MISSING",
+      "No pending passkey challenge; request options again"
+    )
+  }
+
+  const used = await readCounter(c.env.DB, prefix, {
+    action: PASSKEY_CHALLENGE_USED.action,
+    account: challenge
+  })
+  if ((used?.count ?? 0) > 0) {
+    clearChallengeCookie(c)
+    return apiError(
+      c,
+      400,
+      "PASSKEY_CHALLENGE_MISSING",
+      "No pending passkey challenge; request options again"
+    )
+  }
+  await consumeCounter(
+    c.env.DB,
+    prefix,
+    {
+      action: PASSKEY_CHALLENGE_USED.action,
+      account: challenge,
+      windowSeconds: PASSKEY_CHALLENGE_USED.windowSeconds
+    },
+    now
+  )
+
+  const body = await readJsonBody<{
+    credential?: unknown
+    response?: unknown
+    id?: unknown
+    userHandle?: unknown
+  }>(c)
+  const response = (body?.credential ?? body?.response ?? body) as
+    | {
+        id?: unknown
+        response?: { clientDataJSON?: unknown; userHandle?: unknown }
+        userHandle?: unknown
+      }
+    | undefined
+  const credentialId =
+    typeof response?.id === "string" ? response.id.trim() : ""
+  if (!credentialId) {
+    clearChallengeCookie(c)
+    return apiError(c, 401, "PASSKEY_FAILED", "Passkey credential is required")
+  }
+
+  const passkey = await findPasskeyByCredential(c.env.DB, prefix, credentialId)
+  if (!passkey) {
+    clearChallengeCookie(c)
+    return apiError(c, 401, "PASSKEY_FAILED", "Unknown passkey credential")
+  }
+
+  const user = await findUserById(c.env.DB, prefix, passkey.user_id)
+  if (!user) {
+    clearChallengeCookie(c)
+    return apiError(c, 401, "PASSKEY_FAILED", "Account not found")
+  }
+
+  const lock = await readCounter(c.env.DB, prefix, lockKey(user.email))
+  if (lock?.lockedUntil && lock.lockedUntil > now) {
+    clearChallengeCookie(c)
+    return apiError(
+      c,
+      429,
+      "ACCOUNT_LOCKED",
+      "Too many failed attempts; try again later",
+      { retryAfter: lock.lockedUntil - now }
+    )
+  }
+
+  const limit = await enforceRateLimit(c.env.DB, prefix, {
+    ...LOGIN_LIMIT,
+    ip,
+    account: user.email
+  })
+  if (!limit.allowed) {
+    clearChallengeCookie(c)
+    return rateLimited(c, limit.retryAfter)
+  }
+
+  const rawUserHandle =
+    response?.response?.userHandle ?? response?.userHandle ?? body?.userHandle
+  if (
+    rawUserHandle !== undefined &&
+    rawUserHandle !== null &&
+    rawUserHandle !== ""
+  ) {
+    const parsedUserId = parseUserHandle(rawUserHandle)
+    if (parsedUserId === null || parsedUserId !== String(user.id)) {
+      clearChallengeCookie(c)
+      await registerLoginFailure(c.env, prefix, user.email, now)
+      return apiError(
+        c,
+        401,
+        "PASSKEY_FAILED",
+        "Passkey assertion user handle mismatch"
+      )
+    }
+  }
+
+  const verdict = await verifyAuthentication({
+    response,
+    expectedChallenge: challenge,
+    rp: relyingParty(c),
+    credential: {
+      id: passkey.credential_id,
+      publicKey: passkey.public_key,
+      counter: passkey.counter
+    },
+    requireUserVerification: true
+  })
+  clearChallengeCookie(c)
+  if (!verdict.verified) {
+    await registerLoginFailure(c.env, prefix, user.email, now)
+    if (verdict.reason === "challenge_mismatch") {
+      return apiError(
+        c,
+        400,
+        "PASSKEY_CHALLENGE_MISSING",
+        "No pending passkey challenge; request options again"
+      )
+    }
+    return apiError(c, 401, "PASSKEY_FAILED", "Passkey verification failed")
+  }
+
+  if (user.status === "pending") {
+    return apiError(
+      c,
+      403,
+      "ACCOUNT_PENDING",
+      "This account is waiting for administrator approval"
+    )
+  }
+  if (user.status === "disabled") {
+    return apiError(c, 403, "ACCOUNT_DISABLED", "This account is disabled")
+  }
+
+  const verificationEnforced = await emailVerificationEnforced(c.env)
+  if (verificationEnforced && user.email_verified === 0) {
+    return apiError(
+      c,
+      403,
+      "EMAIL_NOT_VERIFIED",
+      "Verify your email address before signing in",
+      { email: user.email }
+    )
+  }
+  if (!verificationEnforced && user.email_verified === 0) {
+    await updateUserFields(c.env.DB, prefix, user.id, { email_verified: 1 })
+    user.email_verified = 1
+  }
+
+  await clearCounter(c.env.DB, prefix, { ...LOGIN_FAIL, account: user.email })
+  await clearCounter(c.env.DB, prefix, lockKey(user.email))
+  await touchPasskey(c.env.DB, prefix, passkey.id, verdict.newCounter)
+
+  const session = await createSession(c.env.DB, prefix, user.id, {
+    ip,
+    userAgent: c.req.header("user-agent") ?? ""
+  })
+  setSessionCookie(c, session.token)
+  return c.json({ success: true, user: await buildUserView(c.env, user) })
 })
 
 // ─── 登出 ─────────────────────────────────────────────────────────────────────
