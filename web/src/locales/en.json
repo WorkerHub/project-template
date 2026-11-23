@@ -89,7 +89,10 @@
       "DISPLAY_NAME_LOCKED": "Display name editing is locked",
       "SELF_ACTION_FORBIDDEN": "You cannot perform this action on your own account",
       "LAST_ADMIN": "Keep at least one active admin",
-      "USER_NOT_FOUND": "User not found"
+      "USER_NOT_FOUND": "User not found",
+      "PASSKEY_FAILED": "Passkey verification failed",
+      "ACCOUNT_LOCKED": "Too many failed attempts; try again in {{seconds}} seconds",
+      "PASSKEY_CHALLENGE_MISSING": "Passkey challenge expired; please try again"
     }
   },
   "home": {

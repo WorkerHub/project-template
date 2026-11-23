@@ -55,6 +55,20 @@ describe("401 处理", () => {
     await Promise.resolve()
     expect(useAuthStore.getState().user).not.toBeNull()
   })
+
+  it("Passkey 直接登录失败的 401 不动已有用户态", async () => {
+    useAuthStore.setState({ user: me(), status: "ready" })
+    stubFetch(401, {
+      error: "Passkey verification failed",
+      code: "PASSKEY_FAILED"
+    })
+
+    await expect(
+      authApi.passkeyDirectLoginVerify({ id: "invalid-credential" })
+    ).rejects.toMatchObject({ code: "PASSKEY_FAILED" })
+    await Promise.resolve()
+    expect(useAuthStore.getState().user).not.toBeNull()
+  })
 })
 
 describe("用户管理操作列端点", () => {
@@ -105,6 +119,45 @@ describe("用户管理操作列端点", () => {
         url: "/api/admin/users/7/role",
         method: "POST",
         body: JSON.stringify({ role: "admin" })
+      }
+    ])
+  })
+})
+
+describe("Passkey 直接登录端点", () => {
+  function recordFetch() {
+    const calls: Array<{ url: string; method: string; body: unknown }> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({
+          url,
+          method: init.method ?? "GET",
+          body: init.body
+        })
+        return respond(200, { success: true })
+      })
+    )
+    return calls
+  }
+
+  it("options 端点走 POST 且无请求体，verify 端点走 POST 并携带 credential", async () => {
+    const calls = recordFetch()
+    const mockCredential = { id: "cred-123", rawId: "cred-123" }
+
+    await authApi.passkeyDirectLoginOptions()
+    await authApi.passkeyDirectLoginVerify(mockCredential)
+
+    expect(calls).toEqual([
+      {
+        url: "/api/auth/passkey/login/options",
+        method: "POST",
+        body: undefined
+      },
+      {
+        url: "/api/auth/passkey/login/verify",
+        method: "POST",
+        body: JSON.stringify({ credential: mockCredential })
       }
     ])
   })

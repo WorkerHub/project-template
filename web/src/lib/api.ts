@@ -36,6 +36,7 @@ export class ApiError extends Error {
   code?: string
   retryAfter?: number
   detail?: string
+  email?: string
 
   constructor(options: {
     status: number
@@ -43,6 +44,7 @@ export class ApiError extends Error {
     code?: string
     retryAfter?: number
     detail?: string
+    email?: string
   }) {
     super(options.message)
     this.name = "ApiError"
@@ -50,6 +52,7 @@ export class ApiError extends Error {
     this.code = options.code
     this.retryAfter = options.retryAfter
     this.detail = options.detail
+    this.email = options.email
   }
 }
 
@@ -58,6 +61,7 @@ interface ErrorEnvelope {
   code?: string
   retryAfter?: number
   detail?: string
+  email?: string
 }
 
 interface RequestOptions {
@@ -102,7 +106,8 @@ async function request<T>(
       message: envelope.error ?? response.statusText,
       code: envelope.code,
       retryAfter: envelope.retryAfter,
-      detail: envelope.detail
+      detail: envelope.detail,
+      email: envelope.email
     })
   }
 
@@ -164,6 +169,17 @@ export const authApi = {
     request<{ success: true; user: Me }>("/auth/2fa/passkey/verify", {
       method: "POST",
       body: { tempToken, credential }
+    }),
+
+  passkeyDirectLoginOptions: () =>
+    request<Record<string, unknown>>("/auth/passkey/login/options", {
+      method: "POST"
+    }),
+
+  passkeyDirectLoginVerify: (credential: unknown) =>
+    request<{ success: true; user: Me }>("/auth/passkey/login/verify", {
+      method: "POST",
+      body: { credential }
     }),
 
   logout: () => request<{ success: true }>("/auth/logout", { method: "POST" }),
