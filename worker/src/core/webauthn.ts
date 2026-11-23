@@ -12,6 +12,7 @@ import {
   verifyAuthenticationResponse as verifyAuthenticationResponseLib,
   verifyRegistrationResponse as verifyRegistrationResponseLib
 } from "@simplewebauthn/server"
+import { isoBase64URL, isoUint8Array } from "@simplewebauthn/server/helpers"
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie"
 import type { Context } from "hono"
 import { PROJECT_NAME } from "../config/project"
@@ -21,7 +22,7 @@ export const PASSKEY_CHALLENGE_COOKIE = "passkey_challenge"
 
 const CHALLENGE_TTL_SECONDS = 300
 
-export type ChallengePurpose = "register" | "authenticate"
+export type ChallengePurpose = "register" | "authenticate" | "login"
 
 export interface RelyingParty {
   rpID: string
@@ -107,17 +108,46 @@ export interface RegistrationCredential {
   transports: string[]
 }
 
+export type VerifyFailureReason = "challenge_mismatch" | "verification_failed"
+
+export type VerifyRegistrationResult =
+  | { verified: true; credential: RegistrationCredential }
+  | { verified: false; reason: VerifyFailureReason }
+
+export type VerifyAuthenticationResult =
+  | { verified: true; newCounter: number }
+  | { verified: false; reason: VerifyFailureReason }
+
+export function isChallengeMismatchError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    return (
+      msg.includes("response challenge") ||
+      (msg.includes("challenge") &&
+        (msg.includes("expected") ||
+          msg.includes("mismatch") ||
+          msg.includes("not equal")))
+    )
+  }
+  return false
+}
+
 /** 注册选项：排除已注册凭据，避免同一认证器重复登记。 */
 export async function createRegistrationOptions(input: {
   rp: RelyingParty
   userName: string
   userDisplayName: string
+  userId?: number
   excludeCredentialIds: string[]
 }): Promise<Awaited<ReturnType<typeof generateRegistrationOptions>>> {
   return generateRegistrationOptions({
     rpName: PROJECT_NAME,
     rpID: input.rp.rpID,
     userName: input.userName,
+    userID:
+      input.userId !== undefined
+        ? isoUint8Array.fromUTF8String(String(input.userId))
+        : undefined,
     userDisplayName: input.userDisplayName || input.userName,
     attestationType: "none",
     excludeCredentials: input.excludeCredentialIds.map((id) => ({
@@ -125,8 +155,8 @@ export async function createRegistrationOptions(input: {
       type: "public-key" as const
     })),
     authenticatorSelection: {
-      residentKey: "preferred",
-      userVerification: "preferred"
+      residentKey: "required",
+      userVerification: "required"
     }
   })
 }
@@ -135,43 +165,53 @@ export async function verifyRegistration(input: {
   response: unknown
   expectedChallenge: string
   rp: RelyingParty
-}): Promise<
-  { verified: true; credential: RegistrationCredential } | { verified: false }
-> {
-  const result = await verifyRegistrationResponseLib({
-    response: input.response as Parameters<
-      typeof verifyRegistrationResponseLib
-    >[0]["response"],
-    expectedChallenge: input.expectedChallenge,
-    expectedOrigin: input.rp.origin,
-    expectedRPID: input.rp.rpID,
-    requireUserVerification: false
-  })
-  if (!result.verified) return { verified: false }
-  const credential = result.registrationInfo.credential
-  return {
-    verified: true,
-    credential: {
-      id: credential.id,
-      publicKey: bytesToBase64(credential.publicKey),
-      counter: credential.counter,
-      transports: credential.transports ?? []
+}): Promise<VerifyRegistrationResult> {
+  try {
+    const result = await verifyRegistrationResponseLib({
+      response: input.response as Parameters<
+        typeof verifyRegistrationResponseLib
+      >[0]["response"],
+      expectedChallenge: input.expectedChallenge,
+      expectedOrigin: input.rp.origin,
+      expectedRPID: input.rp.rpID,
+      requireUserVerification: true
+    })
+    if (!result.verified) {
+      return { verified: false, reason: "verification_failed" }
     }
+    const credential = result.registrationInfo.credential
+    return {
+      verified: true,
+      credential: {
+        id: credential.id,
+        publicKey: bytesToBase64(credential.publicKey),
+        counter: credential.counter,
+        transports: credential.transports ?? []
+      }
+    }
+  } catch (err) {
+    if (isChallengeMismatchError(err)) {
+      return { verified: false, reason: "challenge_mismatch" }
+    }
+    return { verified: false, reason: "verification_failed" }
   }
 }
 
-/** 断言选项：只允许该用户已登记的凭据。 */
+/** 断言选项：支持第二因子（带 allowCredentialIds）与直接登录（留空 allowCredentialIds，UV required）。 */
 export async function createAuthenticationOptions(input: {
   rp: RelyingParty
-  allowCredentialIds: string[]
+  allowCredentialIds?: string[]
+  userVerification?: "required" | "preferred" | "discouraged"
 }): Promise<Awaited<ReturnType<typeof generateAuthenticationOptions>>> {
   return generateAuthenticationOptions({
     rpID: input.rp.rpID,
-    allowCredentials: input.allowCredentialIds.map((id) => ({
-      id,
-      type: "public-key" as const
-    })),
-    userVerification: "preferred"
+    allowCredentials: input.allowCredentialIds
+      ? input.allowCredentialIds.map((id) => ({
+          id,
+          type: "public-key" as const
+        }))
+      : undefined,
+    userVerification: input.userVerification ?? "preferred"
   })
 }
 
@@ -180,21 +220,55 @@ export async function verifyAuthentication(input: {
   expectedChallenge: string
   rp: RelyingParty
   credential: CredentialDescriptor
-}): Promise<{ verified: true; newCounter: number } | { verified: false }> {
-  const result = await verifyAuthenticationResponseLib({
-    response: input.response as Parameters<
-      typeof verifyAuthenticationResponseLib
-    >[0]["response"],
-    expectedChallenge: input.expectedChallenge,
-    expectedOrigin: input.rp.origin,
-    expectedRPID: input.rp.rpID,
-    credential: {
-      id: input.credential.id,
-      publicKey: base64ToBytes(input.credential.publicKey),
-      counter: input.credential.counter
-    },
-    requireUserVerification: false
-  })
-  if (!result.verified) return { verified: false }
-  return { verified: true, newCounter: result.authenticationInfo.newCounter }
+  requireUserVerification?: boolean
+}): Promise<VerifyAuthenticationResult> {
+  try {
+    const result = await verifyAuthenticationResponseLib({
+      response: input.response as Parameters<
+        typeof verifyAuthenticationResponseLib
+      >[0]["response"],
+      expectedChallenge: input.expectedChallenge,
+      expectedOrigin: input.rp.origin,
+      expectedRPID: input.rp.rpID,
+      credential: {
+        id: input.credential.id,
+        publicKey: base64ToBytes(input.credential.publicKey),
+        counter: input.credential.counter
+      },
+      requireUserVerification: input.requireUserVerification ?? false
+    })
+    if (!result.verified) {
+      return { verified: false, reason: "verification_failed" }
+    }
+    return { verified: true, newCounter: result.authenticationInfo.newCounter }
+  } catch (err) {
+    if (isChallengeMismatchError(err)) {
+      return { verified: false, reason: "challenge_mismatch" }
+    }
+    return { verified: false, reason: "verification_failed" }
+  }
+}
+
+/**
+ * 解析认证断言中的 userHandle（可发现凭证中通常为用户主键 UTF-8 字节的 base64url 编码）。
+ */
+export function parseUserHandle(userHandle: unknown): string | null {
+  if (userHandle instanceof Uint8Array) {
+    try {
+      return new TextDecoder().decode(userHandle)
+    } catch {
+      return null
+    }
+  }
+  if (typeof userHandle !== "string" || !userHandle.trim()) {
+    return null
+  }
+  const trimmed = userHandle.trim()
+  try {
+    const text = isoBase64URL.toUTF8String(trimmed)
+    if (text && !text.includes("\uFFFD")) {
+      return text
+    }
+  } catch {}
+  return trimmed || null
 }
