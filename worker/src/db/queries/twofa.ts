@@ -9,6 +9,7 @@ export interface TwoFactorRow {
   totp_secret: string | null
   totp_enabled: number
   email_2fa_enabled: number
+  totp_label: string | null
   updated_at: string
 }
 
@@ -19,7 +20,7 @@ export async function getTwoFactor(
 ): Promise<TwoFactorRow | null> {
   return db
     .prepare(
-      `SELECT user_id, totp_secret, totp_enabled, email_2fa_enabled, updated_at
+      `SELECT user_id, totp_secret, totp_enabled, email_2fa_enabled, totp_label, updated_at
          FROM ${user2faTable(prefix)} WHERE user_id = ?`
     )
     .bind(userId)
@@ -30,19 +31,47 @@ export async function upsertTwoFactor(
   db: D1Database,
   prefix: string,
   userId: number,
-  patch: { totpSecret?: string | null; totpEnabled: number }
+  patch: {
+    totpSecret?: string | null
+    totpEnabled: number
+    totpLabel?: string | null
+  }
 ): Promise<void> {
   const now = new Date().toISOString()
   await db
     .prepare(
-      `INSERT INTO ${user2faTable(prefix)} (user_id, totp_secret, totp_enabled, updated_at)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO ${user2faTable(prefix)} (user_id, totp_secret, totp_enabled, totp_label, updated_at)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET
          totp_secret = excluded.totp_secret,
          totp_enabled = excluded.totp_enabled,
+         totp_label = excluded.totp_label,
          updated_at = excluded.updated_at`
     )
-    .bind(userId, patch.totpSecret ?? null, patch.totpEnabled, now)
+    .bind(
+      userId,
+      patch.totpSecret ?? null,
+      patch.totpEnabled,
+      patch.totpLabel ?? null,
+      now
+    )
+    .run()
+}
+
+export async function updateTotpLabel(
+  db: D1Database,
+  prefix: string,
+  userId: number,
+  label: string | null
+): Promise<void> {
+  const now = new Date().toISOString()
+  await db
+    .prepare(
+      `UPDATE ${user2faTable(prefix)}
+          SET totp_label = ?, updated_at = ?
+        WHERE user_id = ? AND totp_enabled = 1`
+    )
+    .bind(label, now, userId)
     .run()
 }
 

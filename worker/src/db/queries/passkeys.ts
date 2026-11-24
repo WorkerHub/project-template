@@ -1,8 +1,8 @@
 /**
  * 通行密钥凭据的读写（表 `passkey_credentials`，结构对齐 eNotify）。
  *
- * 公钥与 credential_id 只进数据库、不进任何面向用户的 DTO；列表接口只暴露
- * id / 创建时间 / 最近使用时间 / transports，供设置页展示与删除。
+ * 公钥与 credential_id 只进数据库、不进任何面向用户的 DTO；列表接口暴露
+ * id / 名称 (name) / 创建时间 / 最近使用时间 / transports，供设置页展示、改名与删除。
  */
 import { passkeysTable } from "../../lib/tables"
 
@@ -15,10 +15,12 @@ export interface PasskeyRow {
   transports: string
   created_at: string
   last_used_at: string | null
+  name: string | null
 }
 
 export interface PasskeyView {
   id: number
+  name: string | null
   createdAt: string
   lastUsedAt: string | null
   transports: string[]
@@ -27,6 +29,7 @@ export interface PasskeyView {
 function toView(row: PasskeyRow): PasskeyView {
   return {
     id: row.id,
+    name: row.name ?? null,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
     transports: row.transports
@@ -46,7 +49,7 @@ export async function listPasskeys(
   const rows = await db
     .prepare(
       `SELECT id, user_id, credential_id, public_key, counter, transports,
-              created_at, last_used_at
+              created_at, last_used_at, name
          FROM ${passkeysTable(prefix)}
         WHERE user_id = ?
         ORDER BY id ASC`
@@ -87,7 +90,7 @@ export async function findPasskeyByCredentialId(
   return db
     .prepare(
       `SELECT id, user_id, credential_id, public_key, counter, transports,
-              created_at, last_used_at
+              created_at, last_used_at, name
          FROM ${passkeysTable(prefix)}
         WHERE user_id = ? AND credential_id = ?`
     )
@@ -103,7 +106,7 @@ export async function findPasskeyByCredential(
   return db
     .prepare(
       `SELECT id, user_id, credential_id, public_key, counter, transports,
-              created_at, last_used_at
+              created_at, last_used_at, name
          FROM ${passkeysTable(prefix)}
         WHERE credential_id = ?`
     )
@@ -120,13 +123,14 @@ export async function insertPasskey(
     publicKey: string
     counter: number
     transports: string[]
+    name?: string | null
   }
 ): Promise<void> {
   await db
     .prepare(
       `INSERT INTO ${passkeysTable(prefix)}
-        (user_id, credential_id, public_key, counter, transports, created_at, last_used_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL)`
+        (user_id, credential_id, public_key, counter, transports, created_at, last_used_at, name)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`
     )
     .bind(
       input.userId,
@@ -134,9 +138,28 @@ export async function insertPasskey(
       input.publicKey,
       input.counter,
       input.transports.join(","),
-      new Date().toISOString()
+      new Date().toISOString(),
+      input.name ?? null
     )
     .run()
+}
+
+export async function updatePasskeyName(
+  db: D1Database,
+  prefix: string,
+  userId: number,
+  id: number,
+  name: string | null
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE ${passkeysTable(prefix)}
+          SET name = ?
+        WHERE id = ? AND user_id = ?`
+    )
+    .bind(name, id, userId)
+    .run()
+  return result.meta.changes === 1
 }
 
 /** 记一次成功断言：更新签名计数器与最近使用时间（防重放）。 */

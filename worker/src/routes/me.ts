@@ -16,9 +16,13 @@ import { Hono } from "hono"
 import type { Context } from "hono"
 import { hashPassword } from "../core/auth"
 import { revokeAllSessions } from "../core/session"
-import { deletePasskey, listPasskeyViews } from "../db/queries/passkeys"
+import {
+  deletePasskey,
+  listPasskeyViews,
+  updatePasskeyName
+} from "../db/queries/passkeys"
 import { findUserById, updateUserFields } from "../db/queries/users"
-import { currentUserId, requirePassword } from "../lib/account"
+import { currentUserId, normalizeTag, requirePassword } from "../lib/account"
 import { apiError, readJsonBody } from "../lib/http"
 import { readProfileLockSettings } from "../lib/settings"
 import { getTablePrefix } from "../lib/table-prefix"
@@ -129,6 +133,30 @@ meRoutes.get("/passkeys", async (c) => {
   return c.json({
     items: await listPasskeyViews(c.env.DB, prefix, currentUserId(c))
   })
+})
+
+meRoutes.patch("/passkeys/:id", async (c) => {
+  const id = Number(c.req.param("id"))
+  if (!Number.isInteger(id)) {
+    return apiError(c, 404, "PASSKEY_NOT_FOUND", "Passkey not found")
+  }
+  const body = await readJsonBody<{ name?: unknown }>(c)
+  if (!body || typeof body !== "object") {
+    return apiError(c, 400, "INVALID_REQUEST", "Invalid request body")
+  }
+  const name = normalizeTag(body.name)
+  const prefix = getTablePrefix(c.env)
+  const updated = await updatePasskeyName(
+    c.env.DB,
+    prefix,
+    currentUserId(c),
+    id,
+    name
+  )
+  if (!updated) {
+    return apiError(c, 404, "PASSKEY_NOT_FOUND", "Passkey not found")
+  }
+  return c.json({ success: true })
 })
 
 meRoutes.delete("/passkeys/:id", async (c) => {

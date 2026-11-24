@@ -49,7 +49,8 @@ export const SCHEMA_TABLES: SchemaTable[] = [
   totp_secret       TEXT,
   totp_enabled      INTEGER NOT NULL DEFAULT 0,
   updated_at        TEXT NOT NULL,
-  email_2fa_enabled INTEGER NOT NULL DEFAULT 0
+  email_2fa_enabled INTEGER NOT NULL DEFAULT 0,
+  totp_label        TEXT
 )`
   },
   {
@@ -62,7 +63,8 @@ export const SCHEMA_TABLES: SchemaTable[] = [
   counter       INTEGER NOT NULL DEFAULT 0,
   transports    TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL,
-  last_used_at  TEXT
+  last_used_at  TEXT,
+  name          TEXT
 )`
   },
   {
