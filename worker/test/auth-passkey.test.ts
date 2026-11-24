@@ -90,6 +90,7 @@ describe("通行密钥", () => {
       "createdAt",
       "id",
       "lastUsedAt",
+      "name",
       "transports"
     ])
     const raw = JSON.stringify(listBody)
