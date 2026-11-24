@@ -31,6 +31,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       update: vi.fn(),
       changePassword: vi.fn(),
       passkeys: vi.fn(),
+      renamePasskey: vi.fn(),
       deletePasskey: vi.fn()
     },
     authApi: {
@@ -38,6 +39,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       totpSetup: vi.fn(),
       totpEnable: vi.fn(),
       totpDisable: vi.fn(),
+      totpUpdateLabel: vi.fn(),
       emailTwoFactorEnableSend: vi.fn(),
       emailTwoFactorEnable: vi.fn(),
       emailTwoFactorDisable: vi.fn(),
@@ -88,6 +90,7 @@ beforeEach(async () => {
   })
   vi.mocked(authApi.totpEnable).mockResolvedValue({ success: true })
   vi.mocked(authApi.totpDisable).mockResolvedValue({ success: true })
+  vi.mocked(authApi.totpUpdateLabel).mockResolvedValue({ success: true })
   vi.mocked(authApi.emailTwoFactorEnableSend).mockResolvedValue({
     success: true
   })
@@ -97,6 +100,7 @@ beforeEach(async () => {
     challenge: "test-challenge"
   } as never)
   vi.mocked(authApi.passkeyRegisterVerify).mockResolvedValue({ success: true })
+  vi.mocked(meApi.renamePasskey).mockResolvedValue({ success: true })
   vi.mocked(meApi.deletePasskey).mockResolvedValue({ success: true })
 })
 
@@ -290,6 +294,79 @@ describe("设置页", () => {
       expect(authApi.totpEnable).toHaveBeenCalledWith("123456")
     })
 
+    it("验证器应用启用支持可选标签输入，填写后携带 label 提交", async () => {
+      const user = userEvent.setup()
+      renderSettings()
+
+      const totpRow = screen.getByTestId("totp-row")
+      await user.click(within(totpRow).getByRole("button", { name: "开启" }))
+
+      expect(authApi.totpSetup).toHaveBeenCalledTimes(1)
+      expect(await screen.findByText("用验证器扫描二维码")).toBeInTheDocument()
+
+      await user.type(screen.getByLabelText("验证码"), "123456")
+      await user.type(screen.getByLabelText("标签"), "Work Authenticator")
+      await user.click(screen.getByRole("button", { name: "确认开启" }))
+
+      expect(authApi.totpEnable).toHaveBeenCalledWith(
+        "123456",
+        "Work Authenticator"
+      )
+    })
+
+    it("两步验证行：有 totpLabel 时显示标签 Badge，并提供修改标签入口", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: true, totpLabel: "My YubiKey" }),
+        status: "ready"
+      })
+      const user = userEvent.setup()
+      renderSettings()
+
+      const totpRow = screen.getByTestId("totp-row")
+      expect(within(totpRow).getByText("My YubiKey")).toBeInTheDocument()
+      expect(
+        within(totpRow).getByRole("button", { name: "修改标签" })
+      ).toBeInTheDocument()
+
+      await user.click(
+        within(totpRow).getByRole("button", { name: "修改标签" })
+      )
+      const dialog = screen.getByRole("dialog")
+      const input = within(dialog).getByLabelText("标签")
+      expect(input).toHaveValue("My YubiKey")
+
+      await user.clear(input)
+      await user.type(input, "Updated Key")
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+
+      expect(authApi.totpUpdateLabel).toHaveBeenCalledWith("Updated Key")
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      )
+    })
+
+    it("两步验证行：totpLabel 为空时不显示 Badge，修改标签可清空", async () => {
+      useAuthStore.setState({
+        user: me({ totpEnabled: true, totpLabel: null }),
+        status: "ready"
+      })
+      const user = userEvent.setup()
+      renderSettings()
+
+      const totpRow = screen.getByTestId("totp-row")
+      expect(within(totpRow).queryByText("My YubiKey")).not.toBeInTheDocument()
+
+      await user.click(
+        within(totpRow).getByRole("button", { name: "修改标签" })
+      )
+      const dialog = screen.getByRole("dialog")
+      const input = within(dialog).getByLabelText("标签")
+      expect(input).toHaveValue("")
+
+      await user.click(within(dialog).getByRole("button", { name: "确定" }))
+      expect(authApi.totpUpdateLabel).toHaveBeenCalledWith(null)
+    })
+
     it("邮箱验证码未配置时显示邮件未配置且无开启按钮", () => {
       useSiteStore.setState({
         info: publicInfo({ emailConfigured: false }),
@@ -469,11 +546,13 @@ describe("设置页", () => {
         items: [
           {
             id: 1,
+            name: null,
             createdAt: "2026-01-01T00:00:00Z",
             lastUsedAt: "2026-01-02T00:00:00Z"
           },
           {
             id: 2,
+            name: null,
             createdAt: "2026-01-01T00:00:00Z",
             lastUsedAt: null
           }
@@ -488,11 +567,82 @@ describe("设置页", () => {
       expect(screen.getByText("从未使用")).toBeInTheDocument()
     })
 
+    it("凭据列表：有 name 显示名称与创建时间，无 name 显示创建日期", async () => {
+      vi.mocked(meApi.passkeys).mockResolvedValue({
+        items: [
+          {
+            id: 1,
+            name: "MacBook Pro",
+            createdAt: "2026-01-01T08:00:00Z",
+            lastUsedAt: "2026-01-02T10:00:00Z"
+          },
+          {
+            id: 2,
+            name: null,
+            createdAt: "2026-01-01T08:00:00Z",
+            lastUsedAt: null
+          }
+        ]
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByText("MacBook Pro")).toBeInTheDocument()
+      })
+      const renameButtons = screen.getAllByRole("button", { name: "改名" })
+      expect(renameButtons).toHaveLength(2)
+    })
+
+    it("已添加 Passkey 改名弹窗输入新名称提交，亦可留空清除", async () => {
+      vi.mocked(meApi.passkeys).mockResolvedValue({
+        items: [
+          {
+            id: 1,
+            name: "Old Name",
+            createdAt: "2026-01-01T00:00:00Z",
+            lastUsedAt: null
+          }
+        ]
+      })
+      const user = userEvent.setup()
+      renderSettings()
+
+      await screen.findByText("Old Name")
+      const renameBtn = screen.getByRole("button", { name: "改名" })
+      expect(renameBtn).toHaveAttribute("data-variant", "outline")
+
+      // 1. 改为新名称
+      await user.click(renameBtn)
+      const dialog1 = screen.getByRole("dialog")
+      const nameInput1 = within(dialog1).getByLabelText("名称")
+      expect(nameInput1).toHaveValue("Old Name")
+
+      await user.clear(nameInput1)
+      await user.type(nameInput1, "New Name")
+      await user.click(within(dialog1).getByRole("button", { name: "确定" }))
+
+      expect(meApi.renamePasskey).toHaveBeenCalledWith(1, "New Name")
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      )
+
+      // 2. 清空名称（留空 = 清除）
+      await user.click(renameBtn)
+      const dialog2 = screen.getByRole("dialog")
+      const nameInput2 = within(dialog2).getByLabelText("名称")
+      await user.clear(nameInput2)
+      await user.click(within(dialog2).getByRole("button", { name: "确定" }))
+
+      expect(meApi.renamePasskey).toHaveBeenCalledWith(1, null)
+    })
+
     it("删除 Passkey 走密码确认弹窗，错密码报错留在弹窗，对密码完成删除", async () => {
       vi.mocked(meApi.passkeys).mockResolvedValue({
         items: [
           {
             id: 1,
+            name: null,
             createdAt: "2026-01-01T00:00:00Z",
             lastUsedAt: null
           }
@@ -577,6 +727,31 @@ describe("设置页", () => {
       expect(authApi.passkeyRegisterVerify).toHaveBeenCalled()
       await waitFor(() =>
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      )
+    })
+
+    it("添加 Passkey 弹窗填写可选名称，提交时携带 name", async () => {
+      const user = userEvent.setup()
+      renderSettings()
+
+      const addBtn = screen.getByRole("button", { name: "添加 Passkey" })
+      await user.click(addBtn)
+
+      const dialog = screen.getByRole("dialog")
+      const passwordInput = within(dialog).getByLabelText("当前密码")
+      const nameInput = within(dialog).getByLabelText("名称")
+      const confirmBtn = within(dialog).getByRole("button", { name: "确定" })
+
+      await user.type(passwordInput, "correct-password")
+      await user.type(nameInput, "Office Laptop")
+      await user.click(confirmBtn)
+
+      expect(authApi.passkeyRegisterOptions).toHaveBeenCalledWith(
+        "correct-password"
+      )
+      expect(authApi.passkeyRegisterVerify).toHaveBeenCalledWith(
+        expect.anything(),
+        "Office Laptop"
       )
     })
   })

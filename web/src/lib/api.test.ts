@@ -162,3 +162,120 @@ describe("Passkey 直接登录端点", () => {
     ])
   })
 })
+
+describe("Passkey 注册与重命名端点", () => {
+  function recordFetch() {
+    const calls: Array<{ url: string; method: string; body: unknown }> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({
+          url,
+          method: init.method ?? "GET",
+          body: init.body
+        })
+        return respond(200, { success: true })
+      })
+    )
+    return calls
+  }
+
+  it("passkeyRegisterVerify 支持可选 name，未传时不包含 name 字段", async () => {
+    const calls = recordFetch()
+    const credential = { id: "cred-abc" }
+
+    await authApi.passkeyRegisterVerify(credential)
+    await authApi.passkeyRegisterVerify(credential, "My Device")
+
+    expect(calls).toEqual([
+      {
+        url: "/api/auth/2fa/passkey/register/verify",
+        method: "POST",
+        body: JSON.stringify({ credential })
+      },
+      {
+        url: "/api/auth/2fa/passkey/register/verify",
+        method: "POST",
+        body: JSON.stringify({ credential, name: "My Device" })
+      }
+    ])
+  })
+
+  it("renamePasskey 走 PATCH /api/me/passkeys/:id 携带 name", async () => {
+    const calls = recordFetch()
+
+    await meApi.renamePasskey(42, "Office Key")
+    await meApi.renamePasskey(42, null)
+
+    expect(calls).toEqual([
+      {
+        url: "/api/me/passkeys/42",
+        method: "PATCH",
+        body: JSON.stringify({ name: "Office Key" })
+      },
+      {
+        url: "/api/me/passkeys/42",
+        method: "PATCH",
+        body: JSON.stringify({ name: null })
+      }
+    ])
+  })
+})
+
+describe("TOTP 启用与标签端点", () => {
+  function recordFetch() {
+    const calls: Array<{ url: string; method: string; body: unknown }> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({
+          url,
+          method: init.method ?? "GET",
+          body: init.body
+        })
+        return respond(200, { success: true })
+      })
+    )
+    return calls
+  }
+
+  it("totpEnable 支持可选 label，未传时仅传 code", async () => {
+    const calls = recordFetch()
+
+    await authApi.totpEnable("123456")
+    await authApi.totpEnable("654321", "Google Auth")
+
+    expect(calls).toEqual([
+      {
+        url: "/api/auth/2fa/totp/enable",
+        method: "POST",
+        body: JSON.stringify({ code: "123456" })
+      },
+      {
+        url: "/api/auth/2fa/totp/enable",
+        method: "POST",
+        body: JSON.stringify({ code: "654321", label: "Google Auth" })
+      }
+    ])
+  })
+
+  it("totpUpdateLabel 走 PATCH /api/auth/2fa/totp/label", async () => {
+    const calls = recordFetch()
+
+    await authApi.totpUpdateLabel("YubiKey")
+    await authApi.totpUpdateLabel(null)
+
+    expect(calls).toEqual([
+      {
+        url: "/api/auth/2fa/totp/label",
+        method: "PATCH",
+        body: JSON.stringify({ label: "YubiKey" })
+      },
+      {
+        url: "/api/auth/2fa/totp/label",
+        method: "PATCH",
+        body: JSON.stringify({ label: null })
+      }
+    ])
+  })
+})
