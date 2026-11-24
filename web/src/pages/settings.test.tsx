@@ -8,6 +8,7 @@ import {
 } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "@/lib/api"
+import { intlLocale } from "@/lib/language"
 import { SettingsPage } from "@/pages/settings"
 import { PreferencesSection } from "@/pages/settings/preferences-section"
 import { SecuritySection } from "@/pages/settings/security-section"
@@ -592,6 +593,37 @@ describe("设置页", () => {
       })
       const renameButtons = screen.getAllByRole("button", { name: "改名" })
       expect(renameButtons).toHaveLength(2)
+    })
+
+    it("凭据列表：lastUsedAt 格式统一为完整日期时间，不随有无 name 切换", async () => {
+      const date1 = "2026-01-02T10:00:00Z"
+      const date2 = "2026-01-03T15:30:00Z"
+      vi.mocked(meApi.passkeys).mockResolvedValue({
+        items: [
+          {
+            id: 1,
+            name: "MacBook Pro",
+            createdAt: "2026-01-01T08:00:00Z",
+            lastUsedAt: date1
+          },
+          {
+            id: 2,
+            name: null,
+            createdAt: "2026-01-01T08:00:00Z",
+            lastUsedAt: date2
+          }
+        ]
+      })
+
+      renderSettings()
+
+      await waitFor(() => {
+        expect(screen.getByText("MacBook Pro")).toBeInTheDocument()
+      })
+      const expectedTime1 = new Date(date1).toLocaleString(intlLocale("zh"))
+      const expectedTime2 = new Date(date2).toLocaleString(intlLocale("zh"))
+      expect(screen.getByText(`最近使用 ${expectedTime1}`)).toBeInTheDocument()
+      expect(screen.getByText(`最近使用 ${expectedTime2}`)).toBeInTheDocument()
     })
 
     it("已添加 Passkey 改名弹窗输入新名称提交，亦可留空清除", async () => {

@@ -173,20 +173,59 @@ describe("Passkey 命名与改名契约", () => {
     expect(listAfter.items[0].name).toBe("Work Laptop Key")
 
     // 缺省/非法 body 返回 400 INVALID_REQUEST，不静默清空
-    const invalidBodyRes = await request(env, `/api/me/passkeys/${passkeyId}`, {
-      method: "PATCH",
-      headers: { cookie }
-    })
-    expect(invalidBodyRes.status).toBe(400)
-    expect(((await invalidBodyRes.json()) as { code: string }).code).toBe(
-      "INVALID_REQUEST"
-    )
+    for (const badBody of [
+      undefined,
+      {},
+      { name: 123 },
+      { name: true },
+      { name: [] },
+      { name: {} }
+    ]) {
+      const res =
+        badBody === undefined
+          ? await request(env, `/api/me/passkeys/${passkeyId}`, {
+              method: "PATCH",
+              headers: { cookie }
+            })
+          : await patchJson(env, `/api/me/passkeys/${passkeyId}`, badBody, {
+              cookie
+            })
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe(
+        "INVALID_REQUEST"
+      )
+    }
     const listAfterInvalid = (await (
       await request(env, "/api/me/passkeys", { headers: { cookie } })
     ).json()) as {
       items: Array<{ id: number; name: string | null }>
     }
     expect(listAfterInvalid.items[0].name).toBe("Work Laptop Key")
+
+    // 传 null 显式清除名称
+    const nullClearRes = await patchJson(
+      env,
+      `/api/me/passkeys/${passkeyId}`,
+      { name: null },
+      { cookie }
+    )
+    expect(nullClearRes.status).toBe(200)
+    expect(await nullClearRes.json()).toEqual({ success: true })
+
+    const listNullCleared = (await (
+      await request(env, "/api/me/passkeys", { headers: { cookie } })
+    ).json()) as {
+      items: Array<{ id: number; name: string | null }>
+    }
+    expect(listNullCleared.items[0].name).toBeNull()
+
+    // 重新设回一个名称以测试空白串清除
+    await patchJson(
+      env,
+      `/api/me/passkeys/${passkeyId}`,
+      { name: "Temporary Key" },
+      { cookie }
+    )
 
     // 改为空串（清除名称）
     const clearRes = await patchJson(
@@ -353,14 +392,28 @@ describe("TOTP 标签与 UserView 契约", () => {
     expect(await patchLabel.json()).toEqual({ success: true })
 
     // 缺省/非法 body 请求返回 400 INVALID_REQUEST，不静默清空
-    const badPatch = await request(env, "/api/auth/2fa/totp/label", {
-      method: "PATCH",
-      headers: { cookie }
-    })
-    expect(badPatch.status).toBe(400)
-    expect(((await badPatch.json()) as { code: string }).code).toBe(
-      "INVALID_REQUEST"
-    )
+    for (const badBody of [
+      undefined,
+      {},
+      { label: 123 },
+      { label: true },
+      { label: [] },
+      { label: {} }
+    ]) {
+      const res =
+        badBody === undefined
+          ? await request(env, "/api/auth/2fa/totp/label", {
+              method: "PATCH",
+              headers: { cookie }
+            })
+          : await patchJson(env, "/api/auth/2fa/totp/label", badBody, {
+              cookie
+            })
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe(
+        "INVALID_REQUEST"
+      )
+    }
 
     const meAfterPatch = (await (
       await request(env, "/api/me", { headers: { cookie } })
@@ -369,6 +422,31 @@ describe("TOTP 标签与 UserView 契约", () => {
       totpLabel: string | null
     }
     expect(meAfterPatch.totpLabel).toBe("Google Authenticator")
+
+    // PATCH 传 null 显式清除标签
+    const clearNullRes = await patchJson(
+      env,
+      "/api/auth/2fa/totp/label",
+      { label: null },
+      { cookie }
+    )
+    expect(clearNullRes.status).toBe(200)
+    expect(await clearNullRes.json()).toEqual({ success: true })
+
+    const meAfterNullClear = (await (
+      await request(env, "/api/me", { headers: { cookie } })
+    ).json()) as {
+      totpLabel: string | null
+    }
+    expect(meAfterNullClear.totpLabel).toBeNull()
+
+    // 重新设回一个标签以测试后续超长截断与空白串清除
+    await patchJson(
+      env,
+      "/api/auth/2fa/totp/label",
+      { label: "Google Authenticator" },
+      { cookie }
+    )
 
     // PATCH 超长标签截断
     const longLabel = "T".repeat(60)

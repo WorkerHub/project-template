@@ -108,7 +108,12 @@ twoFactorManageRoutes.patch("/totp/label", async (c) => {
   }
 
   const body = await readJsonBody<{ label?: unknown }>(c)
-  if (!body || typeof body !== "object") {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    !("label" in body) ||
+    (typeof body.label !== "string" && body.label !== null)
+  ) {
     return apiError(c, 400, "INVALID_REQUEST", "Invalid request body")
   }
   const label = normalizeTag(body.label)

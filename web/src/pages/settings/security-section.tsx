@@ -644,9 +644,7 @@ export function SecuritySection() {
                       <p className="text-xs text-muted-foreground">
                         {passkey.lastUsedAt
                           ? t("settings.security.passkeyLastUsed", {
-                              date: passkey.name
-                                ? formatDateTime(passkey.lastUsedAt)
-                                : formatDate(passkey.lastUsedAt)
+                              date: formatDateTime(passkey.lastUsedAt)
                             })
                           : t("settings.security.passkeyNeverUsed")}
                       </p>
