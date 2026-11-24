@@ -444,7 +444,9 @@ export function LoginPage() {
                 {busy ? t("common.loading") : t("auth.login.totpSubmit")}
               </Button>
             </>
-          ) : null}
+          ) : (
+            message(error)
+          )}
 
           {step.kind === "totp" && (canUseEmail || canUsePasskey) ? (
             <>
