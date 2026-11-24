@@ -14,7 +14,7 @@ vi.mock("@/lib/webauthn", async (importOriginal) => {
     ...actual,
     webauthnSupported: vi.fn(() => false),
     authenticationCredential: vi.fn(),
-    isWebAuthnCancelled: vi.fn(() => false)
+    isWebAuthnCancelled: vi.fn(actual.isWebAuthnCancelled)
   }
 })
 
@@ -431,25 +431,64 @@ describe("Passkey 直接免密登录", () => {
     expect(useAuthStore.getState().user?.mustChangePassword).toBe(true)
   })
 
-  it("用户取消或设备无凭据时停留在登录页，报 Passkey 失败且密码登录可用", async () => {
+  it("用户取消或关闭弹窗时静默停留在登录页，无错误提示且密码登录可用", async () => {
     vi.mocked(webauthnSupported).mockReturnValue(true)
     vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
       challenge: "test-challenge"
     })
     vi.mocked(authenticationCredential).mockRejectedValue(
-      new Error("NotAllowedError")
+      new DOMException(
+        "The operation either timed out or was not allowed",
+        "NotAllowedError"
+      )
     )
 
     const user = userEvent.setup()
     renderLogin()
     await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Passkey 验证未通过"
-    )
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.queryByText("workbench")).not.toBeInTheDocument()
     expect(screen.getByLabelText("邮箱")).toBeInTheDocument()
     expect(screen.getByLabelText("密码")).toBeInTheDocument()
+  })
+
+  it("用户通过 AbortError 取消时同样静默，不渲染错误提示", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockRejectedValue(
+      new DOMException("The user aborted a request.", "AbortError")
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("workbench")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("邮箱")).toBeInTheDocument()
+    expect(screen.getByLabelText("密码")).toBeInTheDocument()
+  })
+
+  it("设备非取消类异常（如 InvalidStateError）属于真失败，给出错误提示", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockRejectedValue(
+      new DOMException("The authenticator was not found", "InvalidStateError")
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Passkey 验证未通过")
+    expect(alert).not.toHaveTextContent("邮箱或密码不正确")
+    expect(screen.queryByText("workbench")).not.toBeInTheDocument()
   })
 
   it("服务端验证失败报 PASSKEY_FAILED 时，给出可理解的错误而不误报密码错误", async () => {
@@ -591,5 +630,30 @@ describe("Passkey 直接免密登录", () => {
       id: "2fa-cred"
     })
     expect(await screen.findByText("workbench")).toBeInTheDocument()
+  })
+
+  it("2FA 第二步用 Passkey 登录取消时静默，不弹错误提示", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.login).mockResolvedValue({
+      requires2fa: true,
+      tempToken: "temp-token",
+      methods: ["passkey"]
+    })
+    vi.mocked(authApi.passkeyLoginOptions).mockResolvedValue({
+      challenge: "2fa-challenge"
+    })
+    vi.mocked(authenticationCredential).mockRejectedValue(
+      new DOMException("The user aborted a request.", "AbortError")
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await enterPassword(user)
+    await user.click(
+      await screen.findByRole("button", { name: "用 Passkey 登录" })
+    )
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText("workbench")).not.toBeInTheDocument()
   })
 })
