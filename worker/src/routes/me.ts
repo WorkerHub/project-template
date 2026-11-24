@@ -141,7 +141,12 @@ meRoutes.patch("/passkeys/:id", async (c) => {
     return apiError(c, 404, "PASSKEY_NOT_FOUND", "Passkey not found")
   }
   const body = await readJsonBody<{ name?: unknown }>(c)
-  if (!body || typeof body !== "object") {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    !("name" in body) ||
+    (typeof body.name !== "string" && body.name !== null)
+  ) {
     return apiError(c, 400, "INVALID_REQUEST", "Invalid request body")
   }
   const name = normalizeTag(body.name)
