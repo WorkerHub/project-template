@@ -126,6 +126,38 @@ export function LoginPage() {
     }
   }
 
+  const loginWithDirectPasskey = async () => {
+    if (step.kind !== "password") return
+    setNotice("")
+    setError("")
+    setBusy(true)
+    try {
+      const options = await authApi.passkeyDirectLoginOptions()
+      const credential = await authenticationCredential(options)
+      const result = await authApi.passkeyDirectLoginVerify(credential)
+      await finishLogin(result.user)
+    } catch (passkeyError) {
+      if (
+        passkeyError instanceof ApiError &&
+        passkeyError.code === "EMAIL_NOT_VERIFIED"
+      ) {
+        setStep({ kind: "verify", email: passkeyError.email ?? email.trim() })
+        setCode("")
+        cooldown.start(0)
+        return
+      }
+      setError(
+        passkeyError instanceof ApiError
+          ? describeApiError(t, passkeyError)
+          : t("auth.login.passkeyFailed")
+      )
+      const retry = retryAfterSeconds(passkeyError)
+      if (retry) cooldown.start(retry)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const sendEmailCode = async () => {
     if (step.kind !== "email") return
     setBusy(true)
@@ -337,6 +369,18 @@ export function LoginPage() {
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? t("common.loading") : t("auth.login.submit")}
           </Button>
+
+          {passkeyAvailable ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void loginWithDirectPasskey()}
+            >
+              {t("auth.login.passkey")}
+            </Button>
+          ) : null}
 
           <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
             {showForgot ? (

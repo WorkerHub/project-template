@@ -8,6 +8,16 @@ import { useAuthStore } from "@/stores/auth"
 import { useSiteStore } from "@/stores/site"
 import { me, publicInfo } from "@/test/fixtures"
 
+vi.mock("@/lib/webauthn", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/webauthn")>()
+  return {
+    ...actual,
+    webauthnSupported: vi.fn(() => false),
+    authenticationCredential: vi.fn(),
+    isWebAuthnCancelled: vi.fn(() => false)
+  }
+})
+
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
   return {
@@ -18,6 +28,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
       verifySecondFactor: vi.fn(),
       passkeyLoginOptions: vi.fn(),
       passkeyLoginVerify: vi.fn(),
+      passkeyDirectLoginOptions: vi.fn(),
+      passkeyDirectLoginVerify: vi.fn(),
       verifyEmail: vi.fn(),
       resendEmail: vi.fn(),
       logout: vi.fn(),
@@ -28,6 +40,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
 })
 
 const { authApi } = await import("@/lib/api")
+const { webauthnSupported, authenticationCredential } = await import(
+  "@/lib/webauthn"
+)
 
 function renderLogin() {
   return render(
@@ -54,6 +69,8 @@ async function enterEmailStep(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   useSiteStore.setState({ info: publicInfo(), loaded: true })
+  useAuthStore.setState({ user: null, status: "ready" })
+  vi.mocked(webauthnSupported).mockReturnValue(false)
 })
 
 describe("登录两步（技术方案 §5B）", () => {
@@ -343,5 +360,236 @@ describe("找回密码入口随邮件配置显隐", () => {
   it("邮件已配置时显示找回入口", () => {
     renderLogin()
     expect(screen.getByText("忘记密码？")).toBeInTheDocument()
+  })
+})
+
+describe("Passkey 直接免密登录", () => {
+  it("浏览器不支持 WebAuthn 时不显示直接登录入口", () => {
+    vi.mocked(webauthnSupported).mockReturnValue(false)
+    renderLogin()
+    expect(
+      screen.queryByRole("button", { name: "用 Passkey 登录" })
+    ).not.toBeInTheDocument()
+  })
+
+  it("浏览器支持 WebAuthn 时在密码步显示「用 Passkey 登录」入口", () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    renderLogin()
+    expect(
+      screen.getByRole("button", { name: "用 Passkey 登录" })
+    ).toBeInTheDocument()
+  })
+
+  it("直接登录走通后进入工作台", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    const mockCred = {
+      id: "cred-1",
+      rawId: "cred-1",
+      response: { clientDataJSON: "abc" },
+      type: "public-key"
+    }
+    vi.mocked(authenticationCredential).mockResolvedValue(mockCred as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockResolvedValue({
+      success: true,
+      user: me()
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    expect(authApi.passkeyDirectLoginOptions).toHaveBeenCalledTimes(1)
+    expect(authenticationCredential).toHaveBeenCalledWith({
+      challenge: "test-challenge"
+    })
+    expect(authApi.passkeyDirectLoginVerify).toHaveBeenCalledWith(mockCred)
+    expect(await screen.findByText("workbench")).toBeInTheDocument()
+    expect(useAuthStore.getState().user?.email).toBe("owner@example.com")
+  })
+
+  it("首登账号用 Passkey 直接登录后落在改密页", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "cred-1"
+    } as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockResolvedValue({
+      success: true,
+      user: me({ mustChangePassword: true })
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    expect(await screen.findByText("change-password")).toBeInTheDocument()
+    expect(useAuthStore.getState().user?.mustChangePassword).toBe(true)
+  })
+
+  it("用户取消或设备无凭据时停留在登录页，报 Passkey 失败且密码登录可用", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockRejectedValue(
+      new Error("NotAllowedError")
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Passkey 验证未通过"
+    )
+    expect(screen.queryByText("workbench")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("邮箱")).toBeInTheDocument()
+    expect(screen.getByLabelText("密码")).toBeInTheDocument()
+  })
+
+  it("服务端验证失败报 PASSKEY_FAILED 时，给出可理解的错误而不误报密码错误", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "cred-1"
+    } as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockRejectedValue(
+      new ApiError({
+        status: 401,
+        message: "Passkey verification failed",
+        code: "PASSKEY_FAILED"
+      })
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Passkey 验证未通过")
+    expect(alert).not.toHaveTextContent("邮箱或密码不正确")
+    expect(screen.queryByText("workbench")).not.toBeInTheDocument()
+  })
+
+  it("pending / disabled 账号直接登录被拒绝，展示对应提示", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "cred-1"
+    } as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockRejectedValueOnce(
+      new ApiError({
+        status: 403,
+        message: "Pending",
+        code: "ACCOUNT_PENDING"
+      })
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "账号等待管理员批准"
+    )
+
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockRejectedValueOnce(
+      new ApiError({
+        status: 403,
+        message: "Disabled",
+        code: "ACCOUNT_DISABLED"
+      })
+    )
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("账号已被禁用")
+  })
+
+  it("直接登录触发 429 锁定起倒计时", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "cred-1"
+    } as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockRejectedValue(
+      new ApiError({
+        status: 429,
+        message: "Locked",
+        code: "ACCOUNT_LOCKED",
+        retryAfter: 15
+      })
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "尝试次数过多，请 15 秒后再试"
+    )
+  })
+
+  it("未验证邮箱换成验证码步", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.passkeyDirectLoginOptions).mockResolvedValue({
+      challenge: "test-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "cred-1"
+    } as never)
+    vi.mocked(authApi.passkeyDirectLoginVerify).mockRejectedValue(
+      new ApiError({
+        status: 403,
+        message: "Not verified",
+        code: "EMAIL_NOT_VERIFIED",
+        email: "passkey@example.com"
+      })
+    )
+
+    const user = userEvent.setup()
+    renderLogin()
+    await user.click(screen.getByRole("button", { name: "用 Passkey 登录" }))
+    expect(await screen.findByText(/passkey@example.com/)).toBeInTheDocument()
+    expect(screen.getByLabelText("验证码")).toBeInTheDocument()
+  })
+
+  it("2FA 第二步用 Passkey 登录照常可用", async () => {
+    vi.mocked(webauthnSupported).mockReturnValue(true)
+    vi.mocked(authApi.login).mockResolvedValue({
+      requires2fa: true,
+      tempToken: "temp-token",
+      methods: ["passkey"]
+    })
+    vi.mocked(authApi.passkeyLoginOptions).mockResolvedValue({
+      challenge: "2fa-challenge"
+    })
+    vi.mocked(authenticationCredential).mockResolvedValue({
+      id: "2fa-cred"
+    } as never)
+    vi.mocked(authApi.passkeyLoginVerify).mockResolvedValue({
+      success: true,
+      user: me()
+    })
+
+    const user = userEvent.setup()
+    renderLogin()
+    await enterPassword(user)
+    await user.click(
+      await screen.findByRole("button", { name: "用 Passkey 登录" })
+    )
+
+    expect(authApi.passkeyLoginOptions).toHaveBeenCalledWith("temp-token")
+    expect(authApi.passkeyLoginVerify).toHaveBeenCalledWith("temp-token", {
+      id: "2fa-cred"
+    })
+    expect(await screen.findByText("workbench")).toBeInTheDocument()
   })
 })

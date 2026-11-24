@@ -89,7 +89,10 @@
       "DISPLAY_NAME_LOCKED": "昵称已被禁止修改",
       "SELF_ACTION_FORBIDDEN": "不能对自己执行该操作",
       "LAST_ADMIN": "至少保留一个可登录的管理员",
-      "USER_NOT_FOUND": "用户不存在"
+      "USER_NOT_FOUND": "用户不存在",
+      "PASSKEY_FAILED": "Passkey 验证未通过",
+      "ACCOUNT_LOCKED": "尝试次数过多，请 {{seconds}} 秒后再试",
+      "PASSKEY_CHALLENGE_MISSING": "登录已超时，请重试"
     }
   },
   "home": {
