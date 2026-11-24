@@ -65,7 +65,7 @@ interface ErrorEnvelope {
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE"
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
   body?: unknown
   headers?: Record<string, string>
 }
@@ -213,10 +213,16 @@ export const authApi = {
       method: "POST"
     }),
 
-  totpEnable: (code: string) =>
+  totpEnable: (code: string, label?: string) =>
     request<{ success: true }>("/auth/2fa/totp/enable", {
       method: "POST",
-      body: { code }
+      body: label !== undefined ? { code, label } : { code }
+    }),
+
+  totpUpdateLabel: (label: string | null) =>
+    request<{ success: true }>("/auth/2fa/totp/label", {
+      method: "PATCH",
+      body: { label }
     }),
 
   totpDisable: (password: string) =>
@@ -231,10 +237,10 @@ export const authApi = {
       body: { password }
     }),
 
-  passkeyRegisterVerify: (credential: unknown) =>
+  passkeyRegisterVerify: (credential: unknown, name?: string) =>
     request<{ success: true }>("/auth/2fa/passkey/register/verify", {
       method: "POST",
-      body: { credential }
+      body: name !== undefined ? { credential, name } : { credential }
     }),
 
   emailTwoFactorSend: (tempToken: string) =>
@@ -273,6 +279,12 @@ export const meApi = {
     request<{ success: true }>("/me/password", { method: "PUT", body: input }),
 
   passkeys: () => request<{ items: PasskeySummary[] }>("/me/passkeys"),
+
+  renamePasskey: (id: number, name: string | null) =>
+    request<{ success: true }>(`/me/passkeys/${id}`, {
+      method: "PATCH",
+      body: { name }
+    }),
 
   deletePasskey: (id: number, password: string) =>
     request<{ success: true }>(`/me/passkeys/${id}`, {

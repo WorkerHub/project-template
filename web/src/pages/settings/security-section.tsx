@@ -1,8 +1,9 @@
 import { QRCodeSVG } from "qrcode.react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { PasswordChangeForm } from "@/components/password-change-form"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,11 +34,16 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString(intlLocale(currentLanguage()))
 }
 
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString(intlLocale(currentLanguage()))
+}
+
 interface PendingAction {
   title?: string
   description?: string
   confirmText?: string
   destructive?: boolean
+  isPasskeyAdd?: boolean
   execute: (password: string) => Promise<void>
 }
 
@@ -56,14 +62,29 @@ export function SecuritySection() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [confirmBusy, setConfirmBusy] = useState(false)
   const [confirmError, setConfirmError] = useState("")
+  const [addPasskeyName, setAddPasskeyName] = useState("")
+  const addPasskeyNameRef = useRef("")
+
+  const [renamingPasskey, setRenamingPasskey] = useState<PasskeySummary | null>(
+    null
+  )
+  const [passkeyNewName, setPasskeyNewName] = useState("")
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [renameError, setRenameError] = useState("")
 
   const [totpSetup, setTotpSetup] = useState<{
     secret: string
     otpauthUrl: string
   } | null>(null)
   const [totpCode, setTotpCode] = useState("")
+  const [totpLabel, setTotpLabel] = useState("")
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState("")
+
+  const [editingTotpLabel, setEditingTotpLabel] = useState(false)
+  const [newTotpLabel, setNewTotpLabel] = useState("")
+  const [totpLabelBusy, setTotpLabelBusy] = useState(false)
+  const [totpLabelError, setTotpLabelError] = useState("")
 
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([])
 
@@ -94,6 +115,8 @@ export function SecuritySection() {
     setPendingAction(null)
     setConfirmPassword("")
     setConfirmError("")
+    setAddPasskeyName("")
+    addPasskeyNameRef.current = ""
   }
 
   const handleConfirmSubmit = async (event: React.FormEvent) => {
@@ -154,15 +177,24 @@ export function SecuritySection() {
   }
 
   const openAddPasskey = () => {
+    setAddPasskeyName("")
+    addPasskeyNameRef.current = ""
     setPendingAction({
       title: t("settings.security.verifyPasswordTitle"),
       description: t("settings.security.verifyPasswordDescription"),
       confirmText: t("common.actions.confirm"),
       destructive: false,
+      isPasskeyAdd: true,
       execute: async (password) => {
         const options = await authApi.passkeyRegisterOptions(password)
         const credential = await registrationCredential(options)
-        await authApi.passkeyRegisterVerify(credential)
+        const trimmed = addPasskeyNameRef.current.trim()
+        const name = trimmed ? trimmed.slice(0, 50) : undefined
+        if (name !== undefined) {
+          await authApi.passkeyRegisterVerify(credential, name)
+        } else {
+          await authApi.passkeyRegisterVerify(credential)
+        }
         await loadPasskeys()
         await refresh()
         toast.success(t("settings.security.passkeyAdded"))
@@ -170,6 +202,57 @@ export function SecuritySection() {
     })
     setConfirmPassword("")
     setConfirmError("")
+  }
+
+  const openRenamePasskey = (passkey: PasskeySummary) => {
+    setRenamingPasskey(passkey)
+    setPasskeyNewName(passkey.name ?? "")
+    setRenameError("")
+  }
+
+  const handleRenameSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!renamingPasskey) return
+    setRenameBusy(true)
+    setRenameError("")
+    try {
+      const trimmed = passkeyNewName.trim()
+      const name = trimmed ? trimmed.slice(0, 50) : null
+      await meApi.renamePasskey(renamingPasskey.id, name)
+      await loadPasskeys()
+      setRenamingPasskey(null)
+      setPasskeyNewName("")
+      toast.success(t("settings.security.passkeyRenamed"))
+    } catch (error) {
+      setRenameError(describeApiError(t, error))
+    } finally {
+      setRenameBusy(false)
+    }
+  }
+
+  const openEditTotpLabel = () => {
+    setNewTotpLabel(user?.totpLabel ?? "")
+    setTotpLabelError("")
+    setEditingTotpLabel(true)
+  }
+
+  const handleTotpLabelSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setTotpLabelBusy(true)
+    setTotpLabelError("")
+    try {
+      const trimmed = newTotpLabel.trim()
+      const label = trimmed ? trimmed.slice(0, 50) : null
+      await authApi.totpUpdateLabel(label)
+      await refresh()
+      setEditingTotpLabel(false)
+      setNewTotpLabel("")
+      toast.success(t("settings.security.totpLabelUpdated"))
+    } catch (error) {
+      setTotpLabelError(describeApiError(t, error))
+    } finally {
+      setTotpLabelBusy(false)
+    }
   }
 
   const openDeletePasskey = (passkey: PasskeySummary) => {
@@ -196,6 +279,7 @@ export function SecuritySection() {
       const setup = await authApi.totpSetup()
       setTotpSetup(setup)
       setTotpCode("")
+      setTotpLabel("")
     } catch (error) {
       setTotpError(describeApiError(t, error))
     } finally {
@@ -208,10 +292,17 @@ export function SecuritySection() {
     setTotpBusy(true)
     setTotpError("")
     try {
-      await authApi.totpEnable(totpCode)
+      const trimmed = totpLabel.trim()
+      const label = trimmed ? trimmed.slice(0, 50) : undefined
+      if (label !== undefined) {
+        await authApi.totpEnable(totpCode, label)
+      } else {
+        await authApi.totpEnable(totpCode)
+      }
       await refresh()
       setTotpSetup(null)
       setTotpCode("")
+      setTotpLabel("")
     } catch (error) {
       setTotpError(describeApiError(t, error))
     } finally {
@@ -285,9 +376,14 @@ export function SecuritySection() {
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="space-y-0.5">
-                <p className="text-sm font-medium">
-                  {t("settings.security.totpItemTitle")}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">
+                    {t("settings.security.totpItemTitle")}
+                  </p>
+                  {user?.totpLabel ? (
+                    <Badge variant="secondary">{user.totpLabel}</Badge>
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {user?.totpEnabled
                     ? t("settings.security.totpEnabled")
@@ -295,14 +391,24 @@ export function SecuritySection() {
                 </p>
               </div>
               {user?.totpEnabled ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  onClick={openDisableTotp}
-                >
-                  {t("settings.security.totpDisable")}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={openEditTotpLabel}
+                  >
+                    {t("settings.security.totpEditLabel")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={openDisableTotp}
+                  >
+                    {t("settings.security.totpDisable")}
+                  </Button>
+                </div>
               ) : !totpSetup ? (
                 <Button
                   type="button"
@@ -320,6 +426,8 @@ export function SecuritySection() {
                   size="sm"
                   onClick={() => {
                     setTotpSetup(null)
+                    setTotpCode("")
+                    setTotpLabel("")
                     setTotpError("")
                   }}
                 >
@@ -362,6 +470,22 @@ export function SecuritySection() {
                       setTotpCode(
                         event.target.value.replace(/\D/g, "").slice(0, 6)
                       )
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="totp-enable-label">
+                    {t("settings.security.totpLabel")}
+                  </Label>
+                  <Input
+                    id="totp-enable-label"
+                    name="totp-label"
+                    type="text"
+                    maxLength={50}
+                    className="w-full sm:w-80"
+                    value={totpLabel}
+                    onChange={(event) =>
+                      setTotpLabel(event.target.value.slice(0, 50))
                     }
                   />
                 </div>
@@ -501,27 +625,50 @@ export function SecuritySection() {
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2"
                   >
                     <div className="space-y-0.5">
-                      <p>
-                        {t("settings.security.passkeyCreatedAt", {
-                          date: formatDate(passkey.createdAt)
-                        })}
-                      </p>
+                      {passkey.name ? (
+                        <>
+                          <p className="font-medium">{passkey.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {t("settings.security.passkeyCreatedAt", {
+                              date: formatDateTime(passkey.createdAt)
+                            })}
+                          </p>
+                        </>
+                      ) : (
+                        <p>
+                          {t("settings.security.passkeyCreatedAt", {
+                            date: formatDate(passkey.createdAt)
+                          })}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {passkey.lastUsedAt
                           ? t("settings.security.passkeyLastUsed", {
-                              date: formatDate(passkey.lastUsedAt)
+                              date: passkey.name
+                                ? formatDateTime(passkey.lastUsedAt)
+                                : formatDate(passkey.lastUsedAt)
                             })
                           : t("settings.security.passkeyNeverUsed")}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => openDeletePasskey(passkey)}
-                    >
-                      {t("settings.security.passkeyDelete")}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openRenamePasskey(passkey)}
+                      >
+                        {t("settings.security.passkeyRename")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => openDeletePasskey(passkey)}
+                      >
+                        {t("settings.security.passkeyDelete")}
+                      </Button>
+                    </div>
                   </li>
                 ))
               )}
@@ -569,6 +716,26 @@ export function SecuritySection() {
               />
             </div>
 
+            {pendingAction?.isPasskeyAdd ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="add-passkey-name">
+                  {t("settings.security.passkeyName")}
+                </Label>
+                <Input
+                  id="add-passkey-name"
+                  name="passkey-name"
+                  type="text"
+                  maxLength={50}
+                  value={addPasskeyName}
+                  onChange={(event) => {
+                    const val = event.target.value.slice(0, 50)
+                    addPasskeyNameRef.current = val
+                    setAddPasskeyName(val)
+                  }}
+                />
+              </div>
+            ) : null}
+
             {confirmError ? (
               <p role="alert" className="text-sm text-destructive">
                 {confirmError}
@@ -592,6 +759,124 @@ export function SecuritySection() {
                 {confirmBusy
                   ? t("common.loading")
                   : (pendingAction?.confirmText ?? t("common.actions.confirm"))}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={renamingPasskey !== null}
+        onOpenChange={(open) => {
+          if (!open && !renameBusy) {
+            setRenamingPasskey(null)
+            setPasskeyNewName("")
+            setRenameError("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("settings.security.passkeyRenameTitle")}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleRenameSubmit}>
+            <div className="space-y-1.5">
+              <Label htmlFor="passkey-rename-input">
+                {t("settings.security.passkeyName")}
+              </Label>
+              <Input
+                id="passkey-rename-input"
+                name="passkey-name"
+                type="text"
+                maxLength={50}
+                autoFocus
+                value={passkeyNewName}
+                onChange={(event) =>
+                  setPasskeyNewName(event.target.value.slice(0, 50))
+                }
+              />
+            </div>
+
+            {errorLine(renameError)}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={renameBusy}
+                onClick={() => {
+                  setRenamingPasskey(null)
+                  setPasskeyNewName("")
+                  setRenameError("")
+                }}
+              >
+                {t("common.actions.cancel")}
+              </Button>
+              <Button type="submit" disabled={renameBusy}>
+                {renameBusy ? t("common.loading") : t("common.actions.confirm")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editingTotpLabel}
+        onOpenChange={(open) => {
+          if (!open && !totpLabelBusy) {
+            setEditingTotpLabel(false)
+            setNewTotpLabel("")
+            setTotpLabelError("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("settings.security.totpEditLabelTitle")}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleTotpLabelSubmit}>
+            <div className="space-y-1.5">
+              <Label htmlFor="totp-edit-label-input">
+                {t("settings.security.totpLabel")}
+              </Label>
+              <Input
+                id="totp-edit-label-input"
+                name="totp-label"
+                type="text"
+                maxLength={50}
+                autoFocus
+                value={newTotpLabel}
+                onChange={(event) =>
+                  setNewTotpLabel(event.target.value.slice(0, 50))
+                }
+              />
+            </div>
+
+            {errorLine(totpLabelError)}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={totpLabelBusy}
+                onClick={() => {
+                  setEditingTotpLabel(false)
+                  setNewTotpLabel("")
+                  setTotpLabelError("")
+                }}
+              >
+                {t("common.actions.cancel")}
+              </Button>
+              <Button type="submit" disabled={totpLabelBusy}>
+                {totpLabelBusy
+                  ? t("common.loading")
+                  : t("common.actions.confirm")}
               </Button>
             </DialogFooter>
           </form>

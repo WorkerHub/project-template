@@ -58,6 +58,7 @@ export interface Me {
   language: string
   timezone: string
   totpEnabled: boolean
+  totpLabel: string | null
   emailTwoFactorEnabled: boolean
   passkeyCount: number
   /** 个人资料修改锁（后端强制拦截的开关状态，前端据此灰掉编辑按钮）。 */
@@ -83,6 +84,7 @@ export interface MeUpdateInput {
 
 export interface PasskeySummary {
   id: number
+  name: string | null
   createdAt: string
   lastUsedAt: string | null
   transports?: string[]
