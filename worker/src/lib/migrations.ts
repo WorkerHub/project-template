@@ -1,11 +1,11 @@
 /**
- * 迁移的唯一定义处：单一基线 `schema_v1`（历史增量 schema_v1..v6 坍缩）与增量迁移（如 schema_v2）。
+ * 迁移的唯一定义处：单一基线 `schema_v1` 与增量迁移（如 schema_v2）。
  *
  * 舰队标准口径：迁移一律 schema_vN、基线恒 schema_v1、新增递增编号、取代功能名式。
  *
  * - 全新库：`schema_v1` 的 sql 按 schema.ts 的定版 DDL 一次建出全部表与索引即最终形态，后续增量迁移幂等执行。
- * - 生产库：已有 v1..v6 历史记录的生产库由执行器识别基线 `schema_v1` 为已应用（直接 skipped）；
- *   后续增量迁移（如 `schema_v2`）避开历史编号，存量库未应用时正常执行 prepare/sql 并在成功后记账。
+ * - 生产库：由执行器识别基线 `schema_v1` 为已应用（直接 skipped）；
+ *   后续增量迁移（如 `schema_v2`）存量库未应用时正常执行 prepare/sql 并在成功后记账。
  * - 重复执行：全部 `CREATE … IF NOT EXISTS` 与 prepare 动态探测保持幂等（账本已记账时直接 skipped）。
  *
  * 语句之间用 `;` 分隔，语句内部不得出现 `;`（含字符串字面量）。
