@@ -35,3 +35,10 @@ export async function requirePassword(
   }
   return null
 }
+
+/** 名称/标签规范化：去首尾空格、截断上限 50 字、空串转 null。 */
+export function normalizeTag(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed.slice(0, 50) : null
+}

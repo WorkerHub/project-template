@@ -30,10 +30,11 @@ import { insertPasskey, listPasskeys } from "../db/queries/passkeys"
 import {
   getTwoFactor,
   setEmailTwoFactorEnabled,
+  updateTotpLabel,
   upsertTwoFactor
 } from "../db/queries/twofa"
 import { findUserById } from "../db/queries/users"
-import { currentUserId, requirePassword } from "../lib/account"
+import { currentUserId, normalizeTag, requirePassword } from "../lib/account"
 import { apiError, readJsonBody } from "../lib/http"
 import { getTablePrefix } from "../lib/table-prefix"
 import { normalizeLanguage } from "../locales/email"
@@ -68,7 +69,7 @@ twoFactorManageRoutes.post("/totp/setup", async (c) => {
 })
 
 twoFactorManageRoutes.post("/totp/enable", async (c) => {
-  const body = await readJsonBody<{ code?: unknown }>(c)
+  const body = await readJsonBody<{ code?: unknown; label?: unknown }>(c)
   const code = typeof body?.code === "string" ? body.code.trim() : ""
   const prefix = getTablePrefix(c.env)
   const userId = currentUserId(c)
@@ -89,10 +90,29 @@ twoFactorManageRoutes.post("/totp/enable", async (c) => {
     return apiError(c, 400, "INVALID_CODE", "Invalid verification code")
   }
 
+  const label = normalizeTag(body?.label)
   await upsertTwoFactor(c.env.DB, prefix, userId, {
     totpSecret: twoFactor.totp_secret,
-    totpEnabled: 1
+    totpEnabled: 1,
+    totpLabel: label
   })
+  return c.json({ success: true })
+})
+
+twoFactorManageRoutes.patch("/totp/label", async (c) => {
+  const prefix = getTablePrefix(c.env)
+  const userId = currentUserId(c)
+  const twoFactor = await getTwoFactor(c.env.DB, prefix, userId)
+  if (!twoFactor?.totp_enabled) {
+    return apiError(c, 400, "TOTP_NOT_ENABLED", "TOTP is not enabled")
+  }
+
+  const body = await readJsonBody<{ label?: unknown }>(c)
+  if (!body || typeof body !== "object") {
+    return apiError(c, 400, "INVALID_REQUEST", "Invalid request body")
+  }
+  const label = normalizeTag(body.label)
+  await updateTotpLabel(c.env.DB, prefix, userId, label)
   return c.json({ success: true })
 })
 
@@ -104,7 +124,8 @@ twoFactorManageRoutes.post("/totp/disable", async (c) => {
   const prefix = getTablePrefix(c.env)
   await upsertTwoFactor(c.env.DB, prefix, currentUserId(c), {
     totpSecret: null,
-    totpEnabled: 0
+    totpEnabled: 0,
+    totpLabel: null
   })
   return c.json({ success: true })
 })
@@ -149,9 +170,11 @@ twoFactorManageRoutes.post("/passkey/register/options", async (c) => {
 })
 
 twoFactorManageRoutes.post("/passkey/register/verify", async (c) => {
-  const body = await readJsonBody<{ credential?: unknown; response?: unknown }>(
-    c
-  )
+  const body = await readJsonBody<{
+    credential?: unknown
+    response?: unknown
+    name?: unknown
+  }>(c)
   // `credential` 是前端契约字段；`response` 是 @simplewebauthn 的原名，兼容保留。
   const credential = body?.credential ?? body?.response
   if (!credential) {
@@ -198,13 +221,15 @@ twoFactorManageRoutes.post("/passkey/register/verify", async (c) => {
     return apiError(c, 400, "PASSKEY_FAILED", "Passkey registration failed")
   }
 
+  const name = normalizeTag(body?.name)
   const prefix = getTablePrefix(c.env)
   await insertPasskey(c.env.DB, prefix, {
     userId: currentUserId(c),
     credentialId: verdict.credential.id,
     publicKey: verdict.credential.publicKey,
     counter: verdict.credential.counter,
-    transports: verdict.credential.transports
+    transports: verdict.credential.transports,
+    name
   })
   return c.json({ success: true }, 201)
 })

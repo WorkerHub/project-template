@@ -23,6 +23,7 @@ export interface UserView {
   /** 首登强制改密标记；true 时前端引导改密后再放行。 */
   mustChangePassword: boolean
   totpEnabled: boolean
+  totpLabel: string | null
   emailTwoFactorEnabled: boolean
   passkeyCount: number
   profileLocks: {
@@ -48,6 +49,7 @@ export async function buildUserView(
     emailVerified: user.email_verified === 1,
     mustChangePassword: user.must_change_password === 1,
     totpEnabled: Boolean(twoFactor?.totp_enabled),
+    totpLabel: twoFactor?.totp_label ?? null,
     emailTwoFactorEnabled: Boolean(twoFactor?.email_2fa_enabled),
     passkeyCount,
     profileLocks: await readProfileLockSettings(env)

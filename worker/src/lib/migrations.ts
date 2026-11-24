@@ -12,7 +12,7 @@
  * 表名/索引名一律经 tables.ts（基线迁移经 schema.ts 的 `{prefix}` 占位）拼装，不写死前缀。
  */
 import { SCHEMA_INDEXES, SCHEMA_TABLES, baselineStatements } from "./schema"
-import { tableName } from "./tables"
+import { passkeysTable, tableName, user2faTable } from "./tables"
 
 /** 迁移执行时能拿到的东西：库与生效前缀。 */
 export interface MigrationContext {
@@ -29,6 +29,18 @@ export interface Migration {
 
 /** 唯一基线迁移名（坍缩为单一 V1）。 */
 export const BASELINE_MIGRATION = "schema_v1"
+export const SCHEMA_V2_MIGRATION = "schema_v2"
+
+async function hasColumn(
+  db: D1Database,
+  table: string,
+  column: string
+): Promise<boolean> {
+  const info = await db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all<{ name: string }>()
+  return (info.results || []).some((col) => col.name === column)
+}
 
 export function getMigrations(prefix: string): Migration[] {
   const statements = baselineStatements(prefix)
@@ -50,5 +62,26 @@ export function getMigrations(prefix: string): Migration[] {
     }
   }
 
-  return [{ name: BASELINE_MIGRATION, sql }]
+  return [
+    { name: BASELINE_MIGRATION, sql },
+    {
+      name: SCHEMA_V2_MIGRATION,
+      sql: "",
+      async prepare(ctx: MigrationContext) {
+        const passkeys = passkeysTable(ctx.prefix)
+        const user2fa = user2faTable(ctx.prefix)
+
+        if (!(await hasColumn(ctx.db, passkeys, "name"))) {
+          await ctx.db
+            .prepare(`ALTER TABLE ${passkeys} ADD COLUMN name TEXT`)
+            .run()
+        }
+        if (!(await hasColumn(ctx.db, user2fa, "totp_label"))) {
+          await ctx.db
+            .prepare(`ALTER TABLE ${user2fa} ADD COLUMN totp_label TEXT`)
+            .run()
+        }
+      }
+    }
+  ]
 }
