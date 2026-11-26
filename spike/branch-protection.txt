@@ -1,1 +1,0 @@
-这是用于验证 main 分支保护规则（Validate 检查）的 spike 临时文件。
